@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -36,6 +36,13 @@ namespace Telecom.Core
 
 			ConnectionTimeoutSeconds = connectionTimeoutSeconds;
 			ConnectionString = connectionString ?? string.Empty;
+		}
+
+		// Создаёт настройки для одного ПК, добавляя его пути к общему списку.
+		public ScanConfiguration WithAdditionalDirectories(IEnumerable<string> additionalDirectories)
+		{
+			return new ScanConfiguration(Directories.Concat(additionalDirectories), CryptoProExecutables,
+				ConnectionTimeoutSeconds, ConnectionString);
 		}
 
 		// Читает конфигурацию без разрешения DTD и внешних XML-сущностей.
@@ -124,29 +131,16 @@ namespace Telecom.Core
 			return values;
 		}
 
-		// Нормализует Windows-пути и удаляет повторы без учёта регистра.
+		// Требует хотя бы один нормализованный путь в каждом списке общей конфигурации.
 		private static IList<string> NormalizePaths(IEnumerable<string> paths, bool allowWildcard)
 		{
-			var normalized = new List<string>();
-			var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			if (paths != null)
-			{
-				foreach (string path in paths)
-				{
-					string value = RemotePath.NormalizeLocalPath(path, allowWildcard);
-					if (unique.Add(value))
-					{
-						normalized.Add(value);
-					}
-				}
-			}
-
+			IList<string> normalized = RemotePath.NormalizeLocalPaths(paths ?? Enumerable.Empty<string>(), allowWildcard);
 			if (normalized.Count == 0)
 			{
 				throw new InvalidDataException("Список путей конфигурации не должен быть пустым.");
 			}
 
-			return new ReadOnlyCollection<string>(normalized);
+			return normalized;
 		}
 	}
 }

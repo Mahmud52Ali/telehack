@@ -15,6 +15,7 @@ namespace Telecom.Tests
 		private const string Petrov = "Петров Петр Петрович";
 
 		// Запускает проверки под настоящим .NET Framework; ненулевой код означает сбой.
+		[STAThread]
 		private static int Main(string[] args)
 		{
 			Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -28,6 +29,7 @@ namespace Telecom.Tests
 				AddLoggerTests(tests);
 				AddConfigurationTests(tests);
 				AddComputerTests(tests);
+				AddComputerProfileTests(tests);
 				AddDatabaseTests(tests);
 				int failures = 0;
 				foreach (KeyValuePair<string, Action> test in tests)

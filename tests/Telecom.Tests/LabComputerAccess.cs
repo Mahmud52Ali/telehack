@@ -9,7 +9,8 @@ namespace Telecom.Tests
 {
 	internal sealed class LabComputerAccess : IComputerAccess
 	{
-		private const string NetworkPrefix = @"\\LAB-PC\";
+		private readonly string computer;
+		private readonly string networkPrefix;
 		private readonly string root;
 		private readonly WindowsFileSystem actual = new WindowsFileSystem();
 		internal readonly Dictionary<string, string> ProductVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -23,7 +24,15 @@ namespace Telecom.Tests
 
 		// Отображает административные папки тестового ПК на временный каталог дисков, не используя сеть.
 		internal LabComputerAccess(string root)
+			: this(root, "LAB-PC")
 		{
+		}
+
+		// Позволяет одному файловому стенду проверять как прежний внутренний адаптер, так и профили с IPv4.
+		internal LabComputerAccess(string root, string computer)
+		{
+			this.computer = computer;
+			networkPrefix = @"\\" + computer + @"\";
 			this.root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
 		}
 
@@ -31,7 +40,7 @@ namespace Telecom.Tests
 		public void CheckConnection(string computerName, int timeoutSeconds, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			Check.Equal("LAB-PC", computerName);
+			Check.Equal(computer, computerName);
 			ConnectionChecks++;
 			RequestedTimeout = timeoutSeconds;
 			if (ConnectionFailure != null)
@@ -99,9 +108,9 @@ namespace Telecom.Tests
 		// Не позволяет ошибке преобразования привести к настоящему сетевому обращению или выходу из тестовой области.
 		private string Map(string networkPath)
 		{
-			if (!networkPath.StartsWith(NetworkPrefix, StringComparison.OrdinalIgnoreCase))
+			if (!networkPath.StartsWith(networkPrefix, StringComparison.OrdinalIgnoreCase))
 			{
-				throw new InvalidOperationException("Ожидался путь тестового компьютера LAB-PC.");
+				throw new InvalidOperationException("Ожидался путь тестового компьютера " + computer + ".");
 			}
 
 			foreach (string denied in DeniedPaths)
@@ -113,7 +122,7 @@ namespace Telecom.Tests
 				}
 			}
 
-			string relative = networkPath.Substring(NetworkPrefix.Length).Replace('\\', Path.DirectorySeparatorChar);
+			string relative = networkPath.Substring(networkPrefix.Length).Replace('\\', Path.DirectorySeparatorChar);
 			string local = Path.GetFullPath(Path.Combine(root, relative));
 			if (!local.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
 			{
@@ -126,7 +135,7 @@ namespace Telecom.Tests
 		// Возвращает путь в том же формате, что и настоящий SMB-адаптер.
 		private string ToNetworkPath(string localPath)
 		{
-			return NetworkPrefix + localPath.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar).Replace(Path.DirectorySeparatorChar, '\\');
+			return networkPrefix + localPath.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar).Replace(Path.DirectorySeparatorChar, '\\');
 		}
 	}
 }

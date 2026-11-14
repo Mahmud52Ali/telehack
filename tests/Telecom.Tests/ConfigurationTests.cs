@@ -84,6 +84,22 @@ namespace Telecom.Tests
 			Check.Throws<InvalidDataException>(() => new ScanConfiguration(new[] { @"C:\Certs" }, new[] { PrimaryCryptoPath }, 61, string.Empty));
 			Check.Throws<InvalidDataException>(() => new ScanConfiguration(new[] { @"C:\Certs" }, new[] { @"C:\Tools\other.exe" }, 3, string.Empty));
 			Check.Throws<ArgumentException>(() => new ScanConfiguration(new[] { @"C:\Users\I*\Certs" }, new[] { PrimaryCryptoPath }, 3, string.Empty));
+
+			var common = new ScanConfiguration(new[] { @"C:\CommonCerts" }, new[] { PrimaryCryptoPath, SecondaryCryptoPath }, 7,
+				"Server=YOUR_SQL_SERVER;Database=Certificates;Integrated Security=True");
+			ScanConfiguration first = common.WithAdditionalDirectories(new[] { @" c:/commoncerts/ ", @"D:\Certificates", @"d:/certificates/" });
+			ScanConfiguration second = common.WithAdditionalDirectories(new string[0]);
+			Check.Equal(2, first.Directories.Count);
+			Check.Equal(@"C:\CommonCerts", first.Directories[0]);
+			Check.Equal(@"D:\Certificates", first.Directories[1]);
+			Check.Equal(1, common.Directories.Count);
+			Check.Equal(1, second.Directories.Count);
+			Check.Equal(@"C:\CommonCerts", second.Directories[0]);
+			Check.Equal(2, first.CryptoProExecutables.Count);
+			Check.Equal(PrimaryCryptoPath, first.CryptoProExecutables[0]);
+			Check.Equal(SecondaryCryptoPath, first.CryptoProExecutables[1]);
+			Check.Equal(common.ConnectionTimeoutSeconds, first.ConnectionTimeoutSeconds);
+			Check.Equal(common.ConnectionString, first.ConnectionString);
 		}
 
 		// Проверяет конкретные ожидаемые адреса, включая диски, отличные от C:.

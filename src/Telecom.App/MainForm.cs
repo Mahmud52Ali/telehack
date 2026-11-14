@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -12,7 +16,16 @@ namespace Telecom.App
 	{
 		private readonly ILogger logger;
 		private readonly TextBox directoryInput = new TextBox();
-		private readonly TextBox computerInput = new TextBox();
+		private readonly DataGridView computersGrid = new DataGridView();
+		private readonly BindingList<ComputerListItem> computers = new BindingList<ComputerListItem>();
+		private readonly ComputerProfileStore profileStore;
+		private readonly WindowsCredentialStore credentialStore = new WindowsCredentialStore();
+		private readonly IComputerAccess computerAccess;
+		private readonly WindowsSmbConnection connection;
+		private readonly Button addComputerButton = new Button();
+		private readonly Button editComputerButton = new Button();
+		private readonly Button removeComputerButton = new Button();
+		private readonly Button connectButton = new Button();
 		private readonly TextBox configurationInput = new TextBox();
 		private readonly TabControl modeTabs = new TabControl();
 		private readonly Button browseButton = new Button();
@@ -22,18 +35,32 @@ namespace Telecom.App
 		private readonly DataGridView certificatesGrid = new DataGridView();
 		private readonly DataGridView errorsGrid = new DataGridView();
 		private CancellationTokenSource scanCancellation;
+		private bool changingSelection;
+		private bool profilesLoaded;
+		private bool closeWhenIdle;
 
-		// Создаёт панель проверки одного компьютера и сохраняет ручной режим проверки папки.
+		// Создаёт список ПК; подключение сохранённых компьютеров начинается после появления окна.
 		public MainForm(ILogger logger)
+			: this(logger, new ComputerProfileStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+				"Telecom", "computers.xml")), new WindowsFileSystem(), null)
+		{
+		}
+
+		// Принимает хранилище и сетевые адаптеры для проверки полного сценария без настоящих ПК и паролей.
+		public MainForm(ILogger logger, ComputerProfileStore profileStore, IComputerAccess computerAccess, WindowsSmbConnection connection)
 		{
 			this.logger = logger;
+			this.profileStore = profileStore;
+			this.computerAccess = computerAccess;
+			this.connection = connection ?? new WindowsSmbConnection(credentialStore);
 			Text = "СКЗИ — сканирование сертификатов";
 			Font = new Font("Segoe UI", 9F);
 			AutoScaleMode = AutoScaleMode.Font;
-			Size = new Size(1150, 720);
-			MinimumSize = new Size(950, 550);
+			Size = new Size(1200, 850);
+			MinimumSize = new Size(1000, 700);
 			StartPosition = FormStartPosition.CenterScreen;
 			BuildLayout();
+			Shown += OnShown;
 			FormClosing += OnFormClosing;
 		}
 
@@ -41,7 +68,7 @@ namespace Telecom.App
 		private void BuildLayout()
 		{
 			var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), RowCount = 4, ColumnCount = 1 };
-			layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 155));
+			layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 285));
 			layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 			layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 			layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -61,7 +88,7 @@ namespace Telecom.App
 			layout.Controls.Add(actions, 0, 1);
 			AcceptButton = scanButton;
 
-			statusLabel.Text = "Укажите компьютер и конфигурацию. Используются права текущей учётной записи Windows.";
+			statusLabel.Text = "Добавьте компьютеры и отметьте их для подключения и сканирования.";
 			statusLabel.AutoSize = true;
 			statusLabel.Dock = DockStyle.Fill;
 			statusLabel.Margin = new Padding(0, 0, 0, 10);
@@ -93,30 +120,57 @@ namespace Telecom.App
 			Controls.Add(layout);
 		}
 
-		// Разделяет проверку ПК по конфигурации и прежний ручной выбор одной папки.
+		// Даёт выбрать сохранённые ПК и учётки, сохраняя ручную проверку одной папки.
 		private void BuildModes()
 		{
 			modeTabs.Dock = DockStyle.Fill;
-			var computerTab = new TabPage("Компьютер");
+			var computerTab = new TabPage("Компьютеры");
 			var computerPanel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(6), ColumnCount = 3, RowCount = 3 };
-			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
 			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-			computerPanel.Controls.Add(new Label { Text = "Имя ПК или IPv4", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-			computerInput.Dock = DockStyle.Fill;
-			computerInput.AccessibleName = "Имя компьютера или IPv4";
-			computerPanel.Controls.Add(computerInput, 1, 0);
-			computerPanel.Controls.Add(new Label { Text = "Конфигурация", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+			computerPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+			computerPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+			computerPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+			computerPanel.Controls.Add(new Label { Text = "Конфигурация", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
 			configurationInput.Dock = DockStyle.Fill;
 			configurationInput.AccessibleName = "Файл конфигурации";
 			configurationInput.Text = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.xml");
-			computerPanel.Controls.Add(configurationInput, 1, 1);
+			computerPanel.Controls.Add(configurationInput, 1, 0);
 			var configButton = new Button { Text = "Обзор…", AutoSize = true };
 			configButton.Click += OnBrowseConfiguration;
-			computerPanel.Controls.Add(configButton, 2, 1);
-			var hint = new Label { Text = "Папки и пути к КриптоПро задаются в XML-конфигурации рядом с программой.", AutoSize = true };
-			computerPanel.Controls.Add(hint, 0, 2);
-			computerPanel.SetColumnSpan(hint, 3);
+			computerPanel.Controls.Add(configButton, 2, 0);
+			ConfigureGrid(computersGrid);
+			computersGrid.ReadOnly = false;
+			computersGrid.MultiSelect = false;
+			computersGrid.AccessibleName = "Компьютеры для подключения и сканирования";
+			computersGrid.Columns.Add(new DataGridViewCheckBoxColumn
+			{
+				Name = "Selected", DataPropertyName = "Selected", HeaderText = "Выбор", FillWeight = 30
+			});
+			AddColumn(computersGrid, "DisplayName", "Название", 90);
+			AddColumn(computersGrid, "IpAddress", "IPv4", 80);
+			AddColumn(computersGrid, "Account", "Учётная запись", 110);
+			AddColumn(computersGrid, "ConnectionStatus", "Подключение", 140);
+			AddColumn(computersGrid, "ScanStatus", "Сканирование", 140);
+			AddColumn(computersGrid, "CryptoProVersion", "КриптоПро", 85);
+			foreach (DataGridViewColumn column in computersGrid.Columns)
+			{
+				column.ReadOnly = column.Name != "Selected";
+			}
+
+			computersGrid.DataSource = computers;
+			computersGrid.CurrentCellDirtyStateChanged += OnComputerSelectionDirty;
+			computersGrid.CellValueChanged += OnComputerSelectionChanged;
+			computerPanel.Controls.Add(computersGrid, 0, 1);
+			computerPanel.SetColumnSpan(computersGrid, 3);
+			var computerActions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+			AddComputerAction(computerActions, addComputerButton, "Добавить", OnAddComputer);
+			AddComputerAction(computerActions, editComputerButton, "Изменить", OnEditComputer);
+			AddComputerAction(computerActions, removeComputerButton, "Удалить", OnRemoveComputer);
+			AddComputerAction(computerActions, connectButton, "Подключить выбранные", OnConnect);
+			computerPanel.Controls.Add(computerActions, 0, 2);
+			computerPanel.SetColumnSpan(computerActions, 3);
 			computerTab.Controls.Add(computerPanel);
 
 			var directoryTab = new TabPage("Папка");
@@ -136,6 +190,224 @@ namespace Telecom.App
 			directoryTab.Controls.Add(pathPanel);
 			modeTabs.TabPages.Add(computerTab);
 			modeTabs.TabPages.Add(directoryTab);
+			modeTabs.SelectedIndexChanged += OnModeChanged;
+		}
+
+		// Ручное сканирование папки остаётся доступно и при повреждённом списке ПК.
+		private void OnModeChanged(object sender, EventArgs args)
+		{
+			if (scanCancellation == null)
+			{
+				SetScanning(false);
+			}
+		}
+
+		// Добавляет действие над списком ПК без отдельной панели настроек.
+		private static void AddComputerAction(FlowLayoutPanel panel, Button button, string text, EventHandler handler)
+		{
+			button.Text = text;
+			button.AutoSize = true;
+			button.Click += handler;
+			panel.Controls.Add(button);
+		}
+
+		// Загружает настройки до первого подключения; ошибки не приводят к перезаписи файла.
+		private async void OnShown(object sender, EventArgs args)
+		{
+			try
+			{
+				changingSelection = true;
+				foreach (ComputerProfile profile in profileStore.Load())
+				{
+					computers.Add(new ComputerListItem(profile));
+				}
+
+				profilesLoaded = true;
+			}
+			catch (Exception exception)
+			{
+				Program.ShowError("Не удалось загрузить список ПК: " + profileStore.FilePath, exception);
+				statusLabel.Text = "Исправьте файл списка ПК: " + profileStore.FilePath;
+			}
+			finally
+			{
+				changingSelection = false;
+				SetScanning(false);
+			}
+
+			if (profilesLoaded && computers.Any(item => item.Selected))
+			{
+				await RunComputers(false);
+			}
+		}
+
+		// Сразу фиксирует галочку, чтобы нажатие кнопки учитывало последний выбор.
+		private void OnComputerSelectionDirty(object sender, EventArgs args)
+		{
+			if (computersGrid.IsCurrentCellDirty)
+			{
+				computersGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+			}
+		}
+
+		// Сохраняет выбранный набор между запусками; при ошибке восстанавливает прежнее значение.
+		private void OnComputerSelectionChanged(object sender, DataGridViewCellEventArgs args)
+		{
+			if (changingSelection || !profilesLoaded || args.RowIndex < 0 || args.ColumnIndex != 0)
+			{
+				return;
+			}
+
+			var item = (ComputerListItem)computersGrid.Rows[args.RowIndex].DataBoundItem;
+			item.Selected = Convert.ToBoolean(computersGrid.Rows[args.RowIndex].Cells[0].Value);
+			try
+			{
+				profileStore.Save(computers.Select(value => value.Profile));
+				item.SavedSelection = item.Selected;
+			}
+			catch (Exception exception)
+			{
+				changingSelection = true;
+				item.Selected = item.SavedSelection;
+				computers.ResetBindings();
+				changingSelection = false;
+				Program.ShowError("Не удалось сохранить выбор компьютеров.", exception);
+			}
+		}
+
+		// Сохраняет новый ПК и сразу подключает отмеченные компьютеры.
+		private async void OnAddComputer(object sender, EventArgs args)
+		{
+			if (EditComputer(null))
+			{
+				await RunComputers(false);
+			}
+		}
+
+		// Меняет настройки одной строки и повторяет подключение с новой учёткой.
+		private async void OnEditComputer(object sender, EventArgs args)
+		{
+			ComputerListItem item = CurrentComputer();
+			if (item != null && EditComputer(item))
+			{
+				await RunComputers(false);
+			}
+		}
+
+		// Сначала сохраняет новый список, затем удаляет только собственный секрет исключённого ПК.
+		private void OnRemoveComputer(object sender, EventArgs args)
+		{
+			ComputerListItem item = CurrentComputer();
+			if (item == null)
+			{
+				return;
+			}
+
+			try
+			{
+				profileStore.Save(computers.Where(value => value != item).Select(value => value.Profile));
+				changingSelection = true;
+				computers.Remove(item);
+				changingSelection = false;
+				RemoveCredential(item.Profile);
+				statusLabel.Text = "Компьютер удалён из списка. Действующие соединения Windows сохраняются.";
+			}
+			catch (Exception exception)
+			{
+				changingSelection = false;
+				Program.ShowError("Не удалось удалить компьютер или его сохранённую учётку.", exception);
+			}
+		}
+
+		// Возвращает строку под курсором; галочки задают состав запуска, а не объект редактирования.
+		private ComputerListItem CurrentComputer()
+		{
+			return computersGrid.CurrentRow == null ? null : computersGrid.CurrentRow.DataBoundItem as ComputerListItem;
+		}
+
+		// Новая запись секрета сохраняется до смены XML, поэтому неудачная запись списка не портит прежнюю учётку.
+		private bool EditComputer(ComputerListItem previous)
+		{
+			using (var dialog = new ComputerProfileDialog(previous == null ? null : previous.Profile))
+			{
+				if (dialog.ShowDialog(this) != DialogResult.OK)
+				{
+					return false;
+				}
+
+				ComputerProfile profile = dialog.Profile;
+				bool secretSaved = false;
+				bool profileSaved = false;
+				try
+				{
+					var profiles = computers.Select(item => item == previous ? profile : item.Profile).ToList();
+					if (previous == null)
+					{
+						profiles.Add(profile);
+					}
+					ComputerProfileStore.Validate(profiles);
+					NetworkCredential retained = dialog.KeepPreviousPassword ? credentialStore.Read(previous.Profile.Id) : null;
+					if (retained != null && !string.Equals(retained.UserName, profile.UserName, StringComparison.OrdinalIgnoreCase))
+					{
+						throw new InvalidOperationException("Сохранённая учётная запись изменилась. Введите пароль заново.");
+					}
+
+					credentialStore.Save(profile.Id, profile.UserName, retained == null ? dialog.Password : retained.Password);
+					secretSaved = true;
+					profileStore.Save(profiles);
+					profileSaved = true;
+					changingSelection = true;
+					if (previous == null)
+					{
+						computers.Add(new ComputerListItem(profile));
+					}
+					else
+					{
+						computers[computers.IndexOf(previous)] = new ComputerListItem(profile);
+						RemoveCredential(previous.Profile);
+					}
+
+					return true;
+				}
+				catch (Exception exception)
+				{
+					if (secretSaved && !profileSaved)
+					{
+						RemoveCredential(profile);
+					}
+
+					Program.ShowError("Не удалось сохранить компьютер.", exception);
+					return false;
+				}
+				finally
+				{
+					changingSelection = false;
+				}
+			}
+		}
+
+		// Ошибка очистки собственного секрета фиксируется отдельно от уже сохранённого списка.
+		private void RemoveCredential(ComputerProfile profile)
+		{
+			if (profile.HasUserName)
+			{
+				try
+				{
+					credentialStore.Delete(profile.Id);
+				}
+				catch (Exception exception)
+				{
+					logger.Error("Не удалось удалить прежнюю запись учётных данных для " + profile.DisplayName + " (" + profile.IpAddress + ")", exception);
+					Program.ShowError("Список ПК сохранён, но прежнюю запись Telecom/Computer/" + profile.Id.ToString("N")
+						+ " нужно удалить из диспетчера учётных данных вручную.", exception);
+				}
+			}
+		}
+
+		// Повторяет подключение после изменения сети или пароля, не запуская сканирование.
+		private async void OnConnect(object sender, EventArgs args)
+		{
+			await RunComputers(false);
 		}
 
 		// Настраивает таблицу результатов только для просмотра.
@@ -187,12 +459,17 @@ namespace Telecom.App
 		// Выполняет чтение в фоне и возвращает результаты в поток интерфейса.
 		private async void OnScan(object sender, EventArgs args)
 		{
-			bool computerMode = modeTabs.SelectedIndex == 0;
-			string source = computerMode ? computerInput.Text.Trim() : directoryInput.Text.Trim();
+			if (modeTabs.SelectedIndex == 0)
+			{
+				await RunComputers(true);
+				return;
+			}
+
+			string source = directoryInput.Text.Trim();
 			if (source.Length == 0)
 			{
-				statusLabel.Text = computerMode ? "Укажите имя компьютера или IPv4." : "Укажите папку для проверки.";
-				(computerMode ? computerInput : directoryInput).Focus();
+				statusLabel.Text = "Укажите папку для проверки.";
+				directoryInput.Focus();
 				return;
 			}
 
@@ -204,36 +481,15 @@ namespace Telecom.App
 			try
 			{
 				CancellationToken token = scanCancellation.Token;
-				if (computerMode)
+				var scanner = new DirectoryScanner(new WindowsFileSystem(), new CertificateParser(), logger);
+				DirectoryScanResult result = await Task.Run(() => scanner.Scan(source, token));
+				if (!IsDisposed)
 				{
-					string configurationPath = configurationInput.Text.Trim();
-					var scanner = new ComputerScanner(new WindowsFileSystem(), new CertificateParser(), logger);
-					ComputerScanResult result = await Task.Run(() =>
-					{
-						ScanConfiguration configuration = ScanConfiguration.Load(configurationPath);
-						return scanner.Scan(source, configuration, token);
-					});
-					if (!IsDisposed)
-					{
-						certificatesGrid.DataSource = result.Certificates;
-						errorsGrid.DataSource = result.Errors;
-						statusLabel.Text = string.Format("ПК: {0}. {1}. КриптоПро: {2}.{3}Сертификатов: {4}; папок проверено: {5}; ошибок: {6}.",
-							result.ComputerName, DescribeStatus(result.Status), DescribeCryptoPro(result), Environment.NewLine,
-							result.Certificates.Count, result.ScannedDirectories, result.Errors.Count);
-					}
-				}
-				else
-				{
-					var scanner = new DirectoryScanner(new WindowsFileSystem(), new CertificateParser(), logger);
-					DirectoryScanResult result = await Task.Run(() => scanner.Scan(source, token));
-					if (!IsDisposed)
-					{
-						certificatesGrid.DataSource = result.Certificates;
-						errorsGrid.DataSource = result.Errors;
-						string state = result.Cancelled ? "Отменено" : result.Errors.Count > 0 ? "Завершено с ошибками" : "Папка проверена";
-						statusLabel.Text = string.Format("{0}. Сертификатов: {1}. Ошибок: {2}. Пропущено файлов других форматов: {3}.",
-							state, result.Certificates.Count, result.Errors.Count, result.SkippedFiles);
-					}
+					certificatesGrid.DataSource = result.Certificates;
+					errorsGrid.DataSource = result.Errors;
+					string state = result.Cancelled ? "Отменено" : result.Errors.Count > 0 ? "Завершено с ошибками" : "Папка проверена";
+					statusLabel.Text = string.Format("{0}. Сертификатов: {1}. Ошибок: {2}. Пропущено файлов других форматов: {3}.",
+						state, result.Certificates.Count, result.Errors.Count, result.SkippedFiles);
 				}
 			}
 			catch (Exception exception)
@@ -246,12 +502,169 @@ namespace Telecom.App
 			}
 			finally
 			{
-				scanCancellation.Dispose();
-				scanCancellation = null;
-				if (!IsDisposed)
+				FinishOperation();
+			}
+		}
+
+		// Сначала подключает выбранные ПК, затем сканирует доступные; сбой одной учётки не останавливает остальные.
+		private async Task RunComputers(bool scan)
+		{
+			if (scanCancellation != null || !profilesLoaded)
+			{
+				return;
+			}
+
+			computersGrid.EndEdit();
+			List<ComputerListItem> selected = computers.Where(item => item.Selected).ToList();
+			if (selected.Count == 0)
+			{
+				statusLabel.Text = "Отметьте хотя бы один компьютер галочкой.";
+				return;
+			}
+
+			scanCancellation = new CancellationTokenSource();
+			CancellationToken token = scanCancellation.Token;
+			SetScanning(true);
+			var errors = new BindingList<ScanError>();
+			var certificates = new BindingList<CertificateInfo>();
+			errorsGrid.DataSource = errors;
+			foreach (ComputerListItem item in selected)
+			{
+				item.ConnectionStatus = "Ожидание подключения";
+				if (scan)
 				{
-					SetScanning(false);
+					item.ScanStatus = "Ожидание подключения";
+					item.CryptoProVersion = string.Empty;
 				}
+			}
+
+			RefreshComputers();
+			if (scan)
+			{
+				certificatesGrid.DataSource = certificates;
+			}
+
+			try
+			{
+				string configurationPath = configurationInput.Text.Trim();
+				ScanConfiguration configuration = await Task.Run(() => ScanConfiguration.Load(configurationPath), token);
+				var connected = new List<ComputerListItem>();
+				foreach (ComputerListItem item in selected)
+				{
+					token.ThrowIfCancellationRequested();
+					item.ConnectionStatus = "Подключение…";
+					RefreshComputers();
+					statusLabel.Text = "Подключение к " + item.Description + "…";
+					try
+					{
+						logger.Info("Подключение SMB к " + item.Description);
+						await Task.Run(() => connection.Connect(item.Profile, configuration.ConnectionTimeoutSeconds, token), token);
+						item.ConnectionStatus = "SMB подключено";
+						connected.Add(item);
+						logger.Info("Соединение SMB установлено: " + item.Description);
+					}
+					catch (OperationCanceledException)
+					{
+						item.ConnectionStatus = "Подключение отменено";
+						throw;
+					}
+					catch (Exception exception)
+					{
+						if (!ScanFailure.IsRecoverable(exception) && !(exception is InvalidOperationException))
+						{
+							throw;
+						}
+
+						item.ConnectionStatus = exception.Message;
+						item.ScanStatus = scan ? "Пропущено: нет подключения" : item.ScanStatus;
+						errors.Add(new ScanError(item.Description, exception.Message, ScanFailure.Classify(exception)));
+						logger.Error("Ошибка подключения к " + item.Description, exception);
+					}
+
+					RefreshComputers();
+				}
+
+				int completed = 0;
+				if (scan)
+				{
+					var scanner = new ComputerScanner(computerAccess, new CertificateParser(), logger);
+					foreach (ComputerListItem item in connected)
+					{
+						token.ThrowIfCancellationRequested();
+						item.ScanStatus = "Сканирование…";
+						RefreshComputers();
+						statusLabel.Text = "Сканирование " + item.Description + "…";
+						ScanConfiguration computerConfiguration = configuration.WithAdditionalDirectories(item.Profile.AdditionalDirectories);
+						ComputerScanResult result = await Task.Run(() => scanner.Scan(item.IpAddress, computerConfiguration, token), token);
+						foreach (CertificateInfo certificate in result.Certificates)
+						{
+							certificates.Add(certificate);
+						}
+
+						foreach (ScanError error in result.Errors)
+						{
+							errors.Add(error);
+						}
+
+						item.ScanStatus = DescribeStatus(result.Status) + "; сертификатов: " + result.Certificates.Count;
+						item.CryptoProVersion = DescribeCryptoPro(result);
+						RefreshComputers();
+						if (result.Status == ComputerScanStatus.Cancelled)
+						{
+							throw new OperationCanceledException(token);
+						}
+
+						completed++;
+					}
+				}
+
+				statusLabel.Text = string.Format("Подключено ПК: {0} из {1}. {2}Ошибок: {3}.", connected.Count, selected.Count,
+					scan ? "Обработано ПК: " + completed + "; сертификатов: " + certificates.Count + ". " : string.Empty, errors.Count);
+			}
+			catch (OperationCanceledException)
+			{
+				foreach (ComputerListItem item in selected.Where(value => value.ConnectionStatus == "Ожидание подключения"))
+				{
+					item.ConnectionStatus = "Подключение отменено";
+				}
+
+				foreach (ComputerListItem item in selected.Where(value => value.ScanStatus == "Ожидание подключения" || value.ScanStatus == "Сканирование…"))
+				{
+					item.ScanStatus = "Отменено";
+				}
+
+				logger.Info("Подключение или сканирование выбранных ПК отменено.");
+				statusLabel.Text = "Операция отменена. Уже полученные результаты сохранены в окне.";
+				RefreshComputers();
+			}
+			catch (Exception exception)
+			{
+				Program.ShowError("Не удалось обработать выбранные компьютеры.", exception);
+				statusLabel.Text = "Ошибка. Подробности — в журнале telecom.log рядом с программой.";
+			}
+			finally
+			{
+				FinishOperation();
+			}
+		}
+
+		// Обновляет статусы без повторного сохранения галочек через события привязки.
+		private void RefreshComputers()
+		{
+			changingSelection = true;
+			computers.ResetBindings();
+			changingSelection = false;
+		}
+
+		// Возвращает управление после системного вызова и завершает отложенное закрытие окна.
+		private void FinishOperation()
+		{
+			scanCancellation.Dispose();
+			scanCancellation = null;
+			SetScanning(false);
+			if (closeWhenIdle)
+			{
+				Close();
 			}
 		}
 
@@ -270,7 +683,11 @@ namespace Telecom.App
 		private void SetScanning(bool scanning)
 		{
 			modeTabs.Enabled = !scanning;
-			scanButton.Enabled = !scanning;
+			scanButton.Enabled = !scanning && (profilesLoaded || modeTabs.SelectedIndex != 0);
+			addComputerButton.Enabled = !scanning && profilesLoaded;
+			editComputerButton.Enabled = !scanning && profilesLoaded;
+			removeComputerButton.Enabled = !scanning && profilesLoaded;
+			connectButton.Enabled = !scanning && profilesLoaded;
 			browseButton.Enabled = !scanning;
 			directoryInput.Enabled = !scanning;
 			cancelButton.Enabled = scanning;
@@ -320,12 +737,44 @@ namespace Telecom.App
 			}
 		}
 
-		// Останавливает дальнейший обход при закрытии окна.
+		// Дожидается текущего вызова Windows, не обрывая запись настроек или работу SMB.
 		private void OnFormClosing(object sender, FormClosingEventArgs args)
 		{
 			if (scanCancellation != null)
 			{
 				scanCancellation.Cancel();
+				closeWhenIdle = true;
+				args.Cancel = true;
+				statusLabel.Text = "Закрытие… Ожидание текущего обращения к Windows.";
+			}
+		}
+
+		private sealed class ComputerListItem
+		{
+			public ComputerProfile Profile { get; private set; }
+			public bool Selected { get { return Profile.Selected; } set { Profile.Selected = value; } }
+			public bool SavedSelection { get; set; }
+			public string IpAddress { get { return Profile.IpAddress; } }
+			public string DisplayName { get { return Profile.DisplayName; } }
+			public string Description
+			{
+				get
+				{
+					string address = Profile.HasIpAddress ? IpAddress : "IPv4 не задан";
+					return DisplayName.Length == 0 ? address : DisplayName + " (" + address + ")";
+				}
+			}
+			public string Account { get { return Profile.HasUserName ? Profile.UserName : "Не задана"; } }
+			public string ConnectionStatus { get; set; }
+			public string ScanStatus { get; set; }
+			public string CryptoProVersion { get; set; }
+
+			// Отделяет отображаемые статусы от метаданных, которые сохраняются на диск.
+			public ComputerListItem(ComputerProfile profile)
+			{
+				Profile = profile;
+				SavedSelection = profile.Selected;
+				ConnectionStatus = profile.HasIpAddress ? "Не подключено" : "Укажите IPv4";
 			}
 		}
 	}

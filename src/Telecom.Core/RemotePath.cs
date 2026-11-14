@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace Telecom.Core
@@ -26,7 +27,7 @@ namespace Telecom.Core
 			string path = (localPath ?? string.Empty).Trim().Replace('/', '\\');
 			if (!Regex.IsMatch(path, @"^[A-Za-z]:\\"))
 			{
-				throw new ArgumentException("Ожидался путь с буквой диска, например C:\\Certs.", "localPath");
+				throw new ArgumentException("Укажите путь с буквой диска, например C:\\Certs. Введено: «" + path + "».", "localPath");
 			}
 
 			string[] segments = path.Substring(3).Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
@@ -36,11 +37,29 @@ namespace Telecom.Core
 					|| segment.IndexOfAny(new[] { ':', '"', '<', '>', '|', '?', '\0', '\r', '\n', '\t' }) >= 0
 					|| (segment.IndexOf('*') >= 0 && (!allowWildcard || segment != "*")))
 				{
-					throw new ArgumentException("Недопустимый путь. Используйте * только вместо полного имени папки.", "localPath");
+					throw new ArgumentException("Недопустимый сегмент «" + segment + "» в пути «" + path
+						+ "». Используйте * только вместо полного имени папки.", "localPath");
 				}
 			}
 
 			return char.ToUpperInvariant(path[0]) + @":\" + string.Join(@"\", segments);
+		}
+
+		// Нормализует список путей, сохраняя порядок первых вхождений без учёта регистра.
+		internal static IList<string> NormalizeLocalPaths(IEnumerable<string> paths, bool allowWildcard)
+		{
+			var normalized = new List<string>();
+			var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			foreach (string path in paths)
+			{
+				string value = NormalizeLocalPath(path, allowWildcard);
+				if (unique.Add(value))
+				{
+					normalized.Add(value);
+				}
+			}
+
+			return normalized.AsReadOnly();
 		}
 
 		// Преобразует путь любого диска в административный UNC-путь, не выполняя сетевых обращений.
