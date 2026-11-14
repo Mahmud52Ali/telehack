@@ -20,6 +20,7 @@ namespace Telecom.App
 		private readonly DataGridView computersGrid = new DataGridView();
 		private readonly BindingList<ComputerListItem> computers = new BindingList<ComputerListItem>();
 		private readonly ComputerProfileStore profileStore;
+		private readonly string configurationFilePath;
 		private readonly WindowsCredentialStore credentialStore = new WindowsCredentialStore();
 		private readonly IComputerAccess computerAccess;
 		private readonly WindowsSmbConnection connection;
@@ -52,6 +53,7 @@ namespace Telecom.App
 		{
 			this.logger = logger;
 			this.profileStore = profileStore;
+			configurationFilePath = Path.Combine(Path.GetDirectoryName(profileStore.FilePath), "scan.config.xml");
 			this.computerAccess = computerAccess;
 			this.connection = connection ?? new WindowsSmbConnection(credentialStore);
 			Text = "СКЗИ — сканирование сертификатов";
@@ -136,7 +138,7 @@ namespace Telecom.App
 			computerPanel.Controls.Add(new Label { Text = "Конфигурация", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
 			configurationInput.Dock = DockStyle.Fill;
 			configurationInput.AccessibleName = "Файл конфигурации";
-			configurationInput.Text = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.xml");
+			configurationInput.Text = configurationFilePath;
 			computerPanel.Controls.Add(configurationInput, 1, 0);
 			var configButton = new Button { Text = "Обзор…", AutoSize = true };
 			configButton.Click += OnBrowseConfiguration;
@@ -216,6 +218,7 @@ namespace Telecom.App
 		// Загружает настройки до первого подключения; ошибки не приводят к перезаписи файла.
 		private async void OnShown(object sender, EventArgs args)
 		{
+			bool configurationReady = PrepareConfiguration();
 			try
 			{
 				changingSelection = true;
@@ -237,9 +240,66 @@ namespace Telecom.App
 				SetScanning(false);
 			}
 
-			if (profilesLoaded && computers.Any(item => item.Selected))
+			if (configurationReady && profilesLoaded && computers.Any(item => item.Selected))
 			{
 				await RunComputers(false);
+			}
+		}
+
+		// Готовит пользовательский XML перед автоподключением и оставляет окно доступным при ошибке.
+		private bool PrepareConfiguration()
+		{
+			try
+			{
+				InitializeUserConfiguration(configurationFilePath, AppDomain.CurrentDomain.BaseDirectory);
+				return true;
+			}
+			catch (Exception exception)
+			{
+				Program.ShowError("Не удалось создать конфигурацию сканирования: " + configurationFilePath, exception);
+				statusLabel.Text = "Проверьте доступ к файлу конфигурации или выберите XML через «Обзор».";
+				return false;
+			}
+		}
+
+		// При первом запуске переносит настройки старой сборки или копирует штатный шаблон.
+		private static void InitializeUserConfiguration(string configurationPath, string applicationDirectory)
+		{
+			if (File.Exists(configurationPath))
+			{
+				return;
+			}
+
+			Directory.CreateDirectory(Path.GetDirectoryName(configurationPath));
+			string temporaryPath = configurationPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+			try
+			{
+				try
+				{
+					File.Copy(Path.Combine(applicationDirectory, "scan.config.xml"), temporaryPath);
+				}
+				catch (FileNotFoundException)
+				{
+					File.Copy(Path.Combine(applicationDirectory, "scan.config.template.xml"), temporaryPath);
+				}
+
+				File.SetAttributes(temporaryPath, FileAttributes.Normal);
+				File.Move(temporaryPath, configurationPath);
+			}
+			catch (IOException)
+			{
+				// Другой экземпляр приложения мог создать пользовательский конфиг одновременно.
+				if (!File.Exists(configurationPath))
+				{
+					throw;
+				}
+			}
+			finally
+			{
+				if (File.Exists(temporaryPath))
+				{
+					File.Delete(temporaryPath);
+				}
 			}
 		}
 
@@ -449,7 +509,12 @@ namespace Telecom.App
 		// Выбирает существующий XML-файл; содержимое будет проверено непосредственно перед запуском.
 		private void OnBrowseConfiguration(object sender, EventArgs args)
 		{
-			using (var dialog = new OpenFileDialog { Filter = "XML-конфигурация (*.xml)|*.xml|Все файлы (*.*)|*.*", CheckFileExists = true })
+			using (var dialog = new OpenFileDialog
+			{
+				Filter = "XML-конфигурация (*.xml)|*.xml|Все файлы (*.*)|*.*",
+				CheckFileExists = true,
+				InitialDirectory = Path.GetDirectoryName(configurationFilePath)
+			})
 			{
 				if (dialog.ShowDialog(this) == DialogResult.OK)
 				{

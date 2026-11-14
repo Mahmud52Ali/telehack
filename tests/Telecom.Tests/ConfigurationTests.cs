@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Xml;
+using Telecom.App;
 using Telecom.Core;
 
 namespace Telecom.Tests
@@ -14,7 +16,8 @@ namespace Telecom.Tests
 		// Регистрирует проверки реального XML, валидации путей и построения адресов административных папок.
 		private static void AddConfigurationTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Поставляемая XML-конфигурация читается", CheckShippedConfiguration));
+			tests.Add(new KeyValuePair<string, Action>("Конфигурация: первый запуск создаёт рабочий XML из шаблона", CheckShippedConfiguration));
+			tests.Add(new KeyValuePair<string, Action>("Конфигурация: перенос из старой сборки и сохранение пользовательской копии", CheckConfigurationMigration));
 			tests.Add(new KeyValuePair<string, Action>("Пустые, ошибочные и повторяющиеся разделы отвергаются", CheckInvalidConfiguration));
 			tests.Add(new KeyValuePair<string, Action>("DTD и внешние XML-сущности запрещены", CheckExternalEntities));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: нормализация, повторы и таймаут", CheckConfigurationValidation));
@@ -22,16 +25,74 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("Пути с обходом каталогов и некорректные имена ПК отвергаются", CheckInvalidRemotePaths));
 		}
 
-		// Проверяет именно файл, поставляемый вместе с приложением.
+		// Создаёт рабочий XML из шаблона, скопированного при сборке.
 		private static void CheckShippedConfiguration()
 		{
-			string repository = Directory.GetParent(fixturesDirectory).FullName;
-			ScanConfiguration configuration = ScanConfiguration.Load(Path.Combine(repository, "src", "Telecom.App", "scan.config.xml"));
-			Check.Equal(1, configuration.Directories.Count);
-			Check.Equal(@"C:\Users\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates", configuration.Directories[0]);
-			Check.Equal(2, configuration.CryptoProExecutables.Count);
-			Check.Equal(3, configuration.ConnectionTimeoutSeconds);
-			Check.Equal(true, configuration.ConnectionString.Contains("Integrated Security=True"));
+			using (var workspace = new TestWorkspace())
+			{
+				string applicationDirectory = Path.Combine(workspace.DirectoryPath, "app");
+				Directory.CreateDirectory(applicationDirectory);
+				const string templateName = "scan.config.template.xml";
+				string templatePath = Path.Combine(applicationDirectory, templateName);
+				File.Copy(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, templateName), templatePath);
+				File.SetAttributes(templatePath, FileAttributes.ReadOnly);
+				string configurationPath = Path.Combine(workspace.DirectoryPath, "Telecom", "scan.config.xml");
+				try
+				{
+					InitializeUserConfiguration(configurationPath, applicationDirectory);
+					ScanConfiguration configuration = ScanConfiguration.Load(configurationPath);
+					Check.Equal(1, configuration.Directories.Count);
+					Check.Equal(@"C:\Users\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates", configuration.Directories[0]);
+					Check.Equal(2, configuration.CryptoProExecutables.Count);
+					Check.Equal(3, configuration.ConnectionTimeoutSeconds);
+					Check.Equal(string.Empty, configuration.ConnectionString);
+					Check.Equal(false, (File.GetAttributes(configurationPath) & FileAttributes.ReadOnly) != 0);
+				}
+				finally
+				{
+					File.SetAttributes(templatePath, FileAttributes.Normal);
+				}
+			}
+		}
+
+		// Сверяет перенос путей и строки подключения и проверяет приоритет уже существующего файла.
+		private static void CheckConfigurationMigration()
+		{
+			using (var workspace = new TestWorkspace())
+			{
+				string applicationDirectory = workspace.DirectoryPath;
+				string previousPath = Path.Combine(applicationDirectory, "scan.config.xml");
+				string settingsDirectory = Path.Combine(workspace.DirectoryPath, "Telecom");
+				string configurationPath = Path.Combine(settingsDirectory, "scan.config.xml");
+				Directory.CreateDirectory(settingsDirectory);
+				var store = new ComputerProfileStore(Path.Combine(settingsDirectory, "computers.xml"));
+				store.Save(new[] { new ComputerProfile(Guid.NewGuid(), "192.0.2.20", "Тестовый ПК", "reader", false) });
+				string profilesXml = File.ReadAllText(store.FilePath);
+				string previousXml = ConfigurationXml().Replace(@"C:\Certs", @"D:\Migrated")
+					.Replace("</scanSettings>", "<connectionString>Server=EXAMPLE;Database=Certificates</connectionString></scanSettings>");
+				File.WriteAllText(previousPath, previousXml);
+				File.WriteAllText(Path.Combine(applicationDirectory, "scan.config.template.xml"), ConfigurationXml());
+				InitializeUserConfiguration(configurationPath, applicationDirectory);
+				Check.Equal(previousXml, File.ReadAllText(configurationPath));
+				ScanConfiguration configuration = ScanConfiguration.Load(configurationPath);
+				Check.Equal(@"D:\Migrated", configuration.Directories[0]);
+				Check.Equal("Server=EXAMPLE;Database=Certificates", configuration.ConnectionString);
+
+				string editedXml = previousXml.Replace(@"D:\Migrated", @"D:\Edited");
+				File.WriteAllText(configurationPath, editedXml);
+				InitializeUserConfiguration(configurationPath, applicationDirectory);
+				Check.Equal(editedXml, File.ReadAllText(configurationPath));
+				Check.Equal(previousXml, File.ReadAllText(previousPath));
+				Check.Equal(profilesXml, File.ReadAllText(store.FilePath));
+				Check.Equal(2, Directory.GetFiles(settingsDirectory).Length);
+			}
+		}
+
+		// Вызывает код первого запуска с временными путями, чтобы не менять конфигурацию оператора.
+		private static void InitializeUserConfiguration(string path, string applicationDirectory)
+		{
+			MethodInfo initialize = typeof(MainForm).GetMethod("InitializeUserConfiguration", BindingFlags.Static | BindingFlags.NonPublic);
+			initialize.Invoke(null, new object[] { path, applicationDirectory });
 		}
 
 		// Проверяет сообщения об отсутствующей конфигурации, синтаксической ошибке и неверной структуре.

@@ -9,6 +9,18 @@
     <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="scan.config.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="scan.config.template.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="PreserveLegacyScanConfiguration" BeforeTargets="_CleanGetCurrentAndPriorFileWrites;CoreClean"
+          Condition="Exists('$(IntermediateOutputPath)$(CleanFile)') And Exists('$(OutDir)scan.config.xml')">
+    <!-- Старый XML может содержать настройки оператора. Исключаем его из списка файлов, удаляемых сборкой. -->
+    <ReadLinesFromFile File="$(IntermediateOutputPath)$(CleanFile)">
+      <Output TaskParameter="Lines" ItemName="_TelecomPreviousOutputs" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_TelecomPreviousOutputs Remove="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(OutDir)scan.config.xml'))" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)$(CleanFile)" Lines="@(_TelecomPreviousOutputs)"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
 </Project>

@@ -412,7 +412,7 @@ namespace Telecom.Tests
 				File.Copy(Fixture(Petrov, ".cer"), Path.Combine(nested, "petrov.cer"));
 				File.Copy(Fixture(Ivanov, ".cer"), Path.Combine(extra, "extra.cer"));
 				File.Copy(Fixture(Petrov, ".cer"), Path.Combine(secondCommon, "petrov.cer"));
-				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.xml");
+				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.config.xml");
 				string configurationXml = @"<scanSettings connectionTimeoutSeconds=""3""><directories><directory>C:\CommonCerts</directory></directories>"
 					+ @"<cryptoProExecutables><path>C:\Program Files\Crypto Pro\CSP\csptest.exe</path></cryptoProExecutables>";
 				File.WriteAllText(configurationPath, configurationXml + "</scanSettings>");
@@ -454,7 +454,7 @@ namespace Telecom.Tests
 						form.ShowInTaskbar = false;
 						form.StartPosition = FormStartPosition.Manual;
 						form.Location = new Point(-20000, -20000);
-						FormField<TextBox>(form, "configurationInput").Text = configurationPath;
+						Check.Equal(configurationPath, FormField<TextBox>(form, "configurationInput").Text);
 						form.Show();
 						WaitForFormIdle(form);
 						Check.Equal(2, authorizations);
