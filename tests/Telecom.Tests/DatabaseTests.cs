@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Threading;
+using System.Threading.Tasks;
 using Telecom.Core;
 
 namespace Telecom.Tests
@@ -9,6 +10,8 @@ namespace Telecom.Tests
 	internal static partial class Program
 	{
 		private const string DatabaseVariable = "TELECOM_TEST_SQL";
+		private const string CreatedDatabaseName = "TelecomCreateTests";
+		private const string RestrictedLoginName = "telecom_restricted_test";
 		private static string databaseConnectionString;
 
 		// Регистрирует проверки MSSQL; без строки подключения они пропускаются, а не считаются успешными.
@@ -33,6 +36,11 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave));
 			tests.Add(new KeyValuePair<string, Action>("БД: один серийный номер в нескольких папках — одна строка", CheckDuplicateSerialNumber));
 			tests.Add(new KeyValuePair<string, Action>("БД: неизвестная версия КриптоПро и текст с кавычками", CheckMissingVersionAndQuotes));
+			tests.Add(new KeyValuePair<string, Action>("БД: одновременные первые запуски не спорят за создание таблицы", CheckParallelTableCreation));
+			tests.Add(new KeyValuePair<string, Action>("БД: пересекающиеся записи не дают дублей и времени обновления раньше внесения", CheckParallelSave));
+			tests.Add(new KeyValuePair<string, Action>("БД: отсутствующая база создаётся вместе с таблицей", CheckDatabaseCreation));
+			tests.Add(new KeyValuePair<string, Action>("БД: одновременные первые запуски не спорят за создание базы", CheckParallelDatabaseCreation));
+			tests.Add(new KeyValuePair<string, Action>("БД: без прав на создание базы — понятная ошибка", CheckDatabaseCreationDenied));
 			tests.Add(new KeyValuePair<string, Action>("БД: недоступный сервер даёт исключение, а не пустой успех", CheckUnavailableDatabase));
 		}
 
@@ -117,6 +125,114 @@ namespace Telecom.Tests
 			Check.Equal(null, stored.CryptoProVersion);
 		}
 
+		// Проверяет гонку первого обращения: пока таблицы нет, её одновременно создают несколько запусков.
+		private static void CheckParallelTableCreation()
+		{
+			for (int attempt = 0; attempt < 5; attempt++)
+			{
+				DropCertificatesTable();
+				Parallel.For(0, 8, index =>
+				{
+					var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+					if (index % 2 == 0)
+					{
+						repository.EnsureTableExists();
+					}
+					else
+					{
+						repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
+					}
+				});
+				Check.Equal(2, CountRows());
+			}
+		}
+
+		// Проверяет, что при пересекающихся записях строк не становится больше, а время обновления не раньше внесения.
+		private static void CheckParallelSave()
+		{
+			DropCertificatesTable();
+			Parallel.For(0, 40, index =>
+			{
+				var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+				repository.Save(CreateCertificates("Иванов " + index), "5.0.13003");
+			});
+			Check.Equal(2, CountRows());
+			Check.Equal(0, (int)ExecuteScalar("SELECT COUNT(*) FROM dbo.Certificates WHERE UpdatedAt < CreatedAt;"));
+		}
+
+		// Проверяет запись на сервере без базы: она создаётся один раз, повторный запуск её не трогает.
+		private static void CheckDatabaseCreation()
+		{
+			DropCreatedDatabase();
+			try
+			{
+				var logger = new MemoryLogger();
+				var repository = new CertificateRepository(CreatedDatabaseConnectionString(), logger);
+				CertificateSaveResult first = repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
+				Check.Equal(2, first.Inserted);
+				Check.Equal(true, logger.Messages.Contains("Создана база данных: " + CreatedDatabaseName));
+
+				logger.Messages.Clear();
+				CertificateSaveResult second = repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
+				Check.Equal(2, second.Updated);
+				Check.Equal(false, logger.Messages.Contains("Создана база данных: " + CreatedDatabaseName));
+				Check.Equal(2, (int)ExecuteScalar(CreatedDatabaseConnectionString(), "SELECT COUNT(*) FROM dbo.Certificates;"));
+			}
+			finally
+			{
+				DropCreatedDatabase();
+			}
+		}
+
+		// Проверяет гонку первого обращения к серверу, на котором ещё нет базы.
+		private static void CheckParallelDatabaseCreation()
+		{
+			DropCreatedDatabase();
+			try
+			{
+				Parallel.For(0, 6, index =>
+				{
+					var repository = new CertificateRepository(CreatedDatabaseConnectionString(), new MemoryLogger());
+					repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
+				});
+				Check.Equal(2, (int)ExecuteScalar(CreatedDatabaseConnectionString(), "SELECT COUNT(*) FROM dbo.Certificates;"));
+			}
+			finally
+			{
+				DropCreatedDatabase();
+			}
+		}
+
+		// Проверяет учётную запись без права создавать базы: ошибка должна объяснять, что делать.
+		private static void CheckDatabaseCreationDenied()
+		{
+			var builder = new SqlConnectionStringBuilder(CreatedDatabaseConnectionString());
+			if (builder.IntegratedSecurity)
+			{
+				Console.WriteLine("SKIP: проверка учётной записи без прав требует входа по логину SQL Server");
+				return;
+			}
+
+			// Пароль одноразовый: учётная запись создаётся на время проверки и удаляется после неё.
+			string password = "Tc!" + Guid.NewGuid().ToString("N");
+			DropCreatedDatabase();
+			DropRestrictedLogin();
+			try
+			{
+				ExecuteScalar(MasterConnectionString(), "CREATE LOGIN " + RestrictedLoginName + " WITH PASSWORD = N'" + password
+					+ "', CHECK_POLICY = OFF; SELECT 0;");
+				builder.UserID = RestrictedLoginName;
+				builder.Password = password;
+				var repository = new CertificateRepository(builder.ConnectionString, new MemoryLogger());
+				Check.Throws<InvalidOperationException>(() => repository.Save(CreateCertificates("Иванов"), null));
+				Check.Equal(true, ExecuteScalar(MasterConnectionString(), "SELECT DB_ID(N'" + CreatedDatabaseName + "');") is DBNull);
+			}
+			finally
+			{
+				DropRestrictedLogin();
+			}
+		}
+
 		// Проверяет, что ошибка подключения доходит до вызывающего кода.
 		private static void CheckUnavailableDatabase()
 		{
@@ -124,6 +240,7 @@ namespace Telecom.Tests
 				"Server=127.0.0.1,1;Database=TelecomTests;User Id=nobody;Password=nothing;Connect Timeout=2", new MemoryLogger());
 			Check.Throws<SqlException>(() => repository.Save(CreateCertificates("Иванов"), null));
 			Check.Throws<ArgumentException>(() => new CertificateRepository(" ", new MemoryLogger()));
+			Check.Throws<ArgumentException>(() => new CertificateRepository("Server=127.0.0.1;Integrated Security=True", new MemoryLogger()));
 		}
 
 		// Создаёт два сертификата с серийными номерами образцов организаторов.
@@ -147,10 +264,49 @@ namespace Telecom.Tests
 			return (int)ExecuteScalar("SELECT COUNT(*) FROM dbo.Certificates;");
 		}
 
-		// Выполняет служебный запрос проверки без пользовательских данных в тексте SQL.
+		// Возвращает строку подключения к тому же серверу, но к базе, которую создаёт проверяемый класс.
+		private static string CreatedDatabaseConnectionString()
+		{
+			var builder = new SqlConnectionStringBuilder(databaseConnectionString);
+			builder.InitialCatalog = CreatedDatabaseName;
+			return builder.ConnectionString;
+		}
+
+		// Возвращает строку подключения к служебной базе master того же сервера.
+		private static string MasterConnectionString()
+		{
+			var builder = new SqlConnectionStringBuilder(databaseConnectionString);
+			builder.InitialCatalog = "master";
+			return builder.ConnectionString;
+		}
+
+		// Удаляет только временную базу этих проверок; закрытые соединения из пула иначе мешали бы удалению.
+		private static void DropCreatedDatabase()
+		{
+			SqlConnection.ClearAllPools();
+			ExecuteScalar(MasterConnectionString(), "IF DB_ID(N'" + CreatedDatabaseName + "') IS NOT NULL BEGIN ALTER DATABASE ["
+				+ CreatedDatabaseName + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [" + CreatedDatabaseName + "]; END; SELECT 0;");
+			SqlConnection.ClearAllPools();
+		}
+
+		// Удаляет временную учётную запись проверки, если она осталась от прошлого запуска.
+		private static void DropRestrictedLogin()
+		{
+			SqlConnection.ClearAllPools();
+			ExecuteScalar(MasterConnectionString(), "IF SUSER_ID(N'" + RestrictedLoginName + "') IS NOT NULL DROP LOGIN "
+				+ RestrictedLoginName + "; SELECT 0;");
+		}
+
+		// Выполняет служебный запрос проверки в основной тестовой базе.
 		private static object ExecuteScalar(string sql)
 		{
-			using (var connection = new SqlConnection(databaseConnectionString))
+			return ExecuteScalar(databaseConnectionString, sql);
+		}
+
+		// Выполняет служебный запрос проверки; в тексте SQL только константы самих проверок.
+		private static object ExecuteScalar(string connectionString, string sql)
+		{
+			using (var connection = new SqlConnection(connectionString))
 			using (var command = new SqlCommand(sql, connection))
 			{
 				connection.Open();

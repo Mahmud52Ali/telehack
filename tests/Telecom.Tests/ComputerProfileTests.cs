@@ -6,6 +6,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -412,10 +413,13 @@ namespace Telecom.Tests
 				File.Copy(Fixture(Ivanov, ".cer"), Path.Combine(extra, "extra.cer"));
 				File.Copy(Fixture(Petrov, ".cer"), Path.Combine(secondCommon, "petrov.cer"));
 				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.xml");
-				File.WriteAllText(configurationPath, @"<scanSettings connectionTimeoutSeconds=""3""><directories><directory>C:\CommonCerts</directory></directories>"
-					+ @"<cryptoProExecutables><path>C:\Program Files\Crypto Pro\CSP\csptest.exe</path></cryptoProExecutables></scanSettings>");
+				string configurationXml = @"<scanSettings connectionTimeoutSeconds=""3""><directories><directory>C:\CommonCerts</directory></directories>"
+					+ @"<cryptoProExecutables><path>C:\Program Files\Crypto Pro\CSP\csptest.exe</path></cryptoProExecutables>";
+				File.WriteAllText(configurationPath, configurationXml + "</scanSettings>");
 				var firstAccess = new LabComputerAccess(firstRoot, ProfileComputerIp);
 				var secondAccess = new LabComputerAccess(secondRoot, ProfileCommonOnlyIp);
+				firstAccess.ProductVersions.Add(RemotePath.ToUnc(ProfileComputerIp, PrimaryCryptoPath), "5.0.13003.0");
+				secondAccess.ProductVersions.Add(RemotePath.ToUnc(ProfileCommonOnlyIp, PrimaryCryptoPath), "5.0.13455.0");
 				string deniedDirectory = @"\\" + ProfileComputerIp + @"\D$\Denied";
 				firstAccess.DeniedPaths.Add(deniedDirectory);
 				var access = new SessionCheckedAccess(new Dictionary<string, LabComputerAccess>
@@ -468,6 +472,14 @@ namespace Telecom.Tests
 						grid.EndEdit();
 						Check.Equal(true, store.Load()[1].Selected);
 
+						bool useSql = !string.IsNullOrWhiteSpace(databaseConnectionString);
+						if (useSql)
+						{
+							DropCertificatesTable();
+							File.WriteAllText(configurationPath, configurationXml + "<connectionString>"
+								+ SecurityElement.Escape(databaseConnectionString) + "</connectionString></scanSettings>");
+						}
+
 						access.AuthenticatedComputers.Clear();
 						logger.Errors.Clear();
 						FormField<Button>(form, "scanButton").PerformClick();
@@ -493,6 +505,32 @@ namespace Telecom.Tests
 						Check.Equal(deniedDirectory, errors[2].Path);
 						Check.Equal(3, logger.Errors.Count);
 						Check.Equal(true, logger.Errors[2] is UnauthorizedAccessException);
+
+						int databaseColumn = grid.Columns.Cast<DataGridViewColumn>().Single(column => column.DataPropertyName == "DatabaseStatus").Index;
+						if (useSql)
+						{
+							Check.Equal("Добавлено: 2, обновлено: 0", grid.Rows[1].Cells[databaseColumn].Value);
+							Check.Equal("Добавлено: 0, обновлено: 1", grid.Rows[2].Cells[databaseColumn].Value);
+							Check.Equal(2, CountRows());
+							Check.Equal("5.0.13003", ReadCertificate("03A14016").CryptoProVersion);
+							Check.Equal("5.0.13455", ReadCertificate("378F0E85").CryptoProVersion);
+						}
+						else
+						{
+							Check.Equal("Строка подключения не задана", grid.Rows[1].Cells[databaseColumn].Value);
+						}
+
+						File.WriteAllText(configurationPath, configurationXml
+							+ "<connectionString>Server=localhost</connectionString></scanSettings>");
+						access.AuthenticatedComputers.Clear();
+						MethodInfo runComputers = typeof(MainForm).GetMethod("RunComputers", BindingFlags.NonPublic | BindingFlags.Instance);
+						runComputers.Invoke(form, new object[] { true });
+						WaitForFormIdle(form);
+						Check.Equal(6, authorizations);
+						Check.Equal(4, FormField<DataGridView>(form, "certificatesGrid").Rows.Count);
+						Check.Equal(true, grid.Rows[1].Cells[databaseColumn].Value.ToString().StartsWith("Ошибка записи.", StringComparison.Ordinal));
+						Check.Equal(true, grid.Rows[2].Cells[databaseColumn].Value.ToString().StartsWith("Ошибка записи.", StringComparison.Ordinal));
+						Check.Equal(true, FormField<Label>(form, "statusLabel").Text.Contains("Ошибок записи в БД: 2."));
 						form.Close();
 					}
 				}

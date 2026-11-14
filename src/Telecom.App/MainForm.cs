@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Data.Common;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -154,6 +155,7 @@ namespace Telecom.App
 			AddColumn(computersGrid, "ConnectionStatus", "Подключение", 140);
 			AddColumn(computersGrid, "ScanStatus", "Сканирование", 140);
 			AddColumn(computersGrid, "CryptoProVersion", "КриптоПро", 85);
+			AddColumn(computersGrid, "DatabaseStatus", "База данных", 110);
 			foreach (DataGridViewColumn column in computersGrid.Columns)
 			{
 				column.ReadOnly = column.Name != "Selected";
@@ -535,6 +537,7 @@ namespace Telecom.App
 				{
 					item.ScanStatus = "Ожидание подключения";
 					item.CryptoProVersion = string.Empty;
+					item.DatabaseStatus = "Не записано";
 				}
 			}
 
@@ -585,6 +588,7 @@ namespace Telecom.App
 				}
 
 				int completed = 0;
+				int databaseFailures = 0;
 				if (scan)
 				{
 					var scanner = new ComputerScanner(computerAccess, new CertificateParser(), logger);
@@ -615,11 +619,19 @@ namespace Telecom.App
 						}
 
 						completed++;
+						if (!await SaveToDatabase(item, configuration, result, token))
+						{
+							databaseFailures++;
+						}
+
+						RefreshComputers();
+						token.ThrowIfCancellationRequested();
 					}
 				}
 
-				statusLabel.Text = string.Format("Подключено ПК: {0} из {1}. {2}Ошибок: {3}.", connected.Count, selected.Count,
-					scan ? "Обработано ПК: " + completed + "; сертификатов: " + certificates.Count + ". " : string.Empty, errors.Count);
+				statusLabel.Text = string.Format("Подключено ПК: {0} из {1}. {2}Ошибок подключения и чтения: {3}.{4}", connected.Count, selected.Count,
+					scan ? "Обработано ПК: " + completed + "; сертификатов: " + certificates.Count + ". " : string.Empty, errors.Count,
+					databaseFailures == 0 ? string.Empty : " Ошибок записи в БД: " + databaseFailures + ".");
 			}
 			catch (OperationCanceledException)
 			{
@@ -645,6 +657,54 @@ namespace Telecom.App
 			finally
 			{
 				FinishOperation();
+			}
+		}
+
+		// Сохраняет находки одного ПК в фоне и выводит исход записи в его строке.
+		private async Task<bool> SaveToDatabase(ComputerListItem item, ScanConfiguration configuration, ComputerScanResult result,
+			CancellationToken token)
+		{
+			if (result.Certificates.Count == 0)
+			{
+				item.DatabaseStatus = "Нет сертификатов";
+				return true;
+			}
+
+			if (configuration.ConnectionString.Length == 0)
+			{
+				item.DatabaseStatus = "Строка подключения не задана";
+				return true;
+			}
+
+			token.ThrowIfCancellationRequested();
+			item.DatabaseStatus = "Запись…";
+			RefreshComputers();
+			statusLabel.Text = "Запись в БД для " + item.Description + "…";
+			try
+			{
+				CertificateSaveResult saved = await Task.Run(() =>
+				{
+					var repository = new CertificateRepository(configuration.ConnectionString, logger);
+					return repository.Save(result.Certificates, result.CryptoProVersion);
+				}, token);
+				item.DatabaseStatus = string.Format("Добавлено: {0}, обновлено: {1}", saved.Inserted, saved.Updated);
+				return true;
+			}
+			catch (OperationCanceledException)
+			{
+				item.DatabaseStatus = "Запись отменена";
+				throw;
+			}
+			catch (Exception exception)
+			{
+				if (!(exception is DbException) && !(exception is InvalidOperationException) && !(exception is ArgumentException))
+				{
+					throw;
+				}
+
+				item.DatabaseStatus = "Ошибка записи. " + exception.Message;
+				logger.Error("Ошибка записи в базу данных для " + item.Description, exception);
+				return false;
 			}
 		}
 
@@ -768,6 +828,7 @@ namespace Telecom.App
 			public string ConnectionStatus { get; set; }
 			public string ScanStatus { get; set; }
 			public string CryptoProVersion { get; set; }
+			public string DatabaseStatus { get; set; }
 
 			// Отделяет отображаемые статусы от метаданных, которые сохраняются на диск.
 			public ComputerListItem(ComputerProfile profile)
