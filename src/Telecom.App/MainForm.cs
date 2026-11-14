@@ -1,4 +1,5 @@
 using System;
+using System.Data.Common;
 using System.Drawing;
 using System.IO;
 using System.Threading;
@@ -208,18 +209,21 @@ namespace Telecom.App
 				{
 					string configurationPath = configurationInput.Text.Trim();
 					var scanner = new ComputerScanner(new WindowsFileSystem(), new CertificateParser(), logger);
+					string databaseStatus = null;
 					ComputerScanResult result = await Task.Run(() =>
 					{
 						ScanConfiguration configuration = ScanConfiguration.Load(configurationPath);
-						return scanner.Scan(source, configuration, token);
+						ComputerScanResult scanResult = scanner.Scan(source, configuration, token);
+						databaseStatus = SaveToDatabase(configuration, scanResult);
+						return scanResult;
 					});
 					if (!IsDisposed)
 					{
 						certificatesGrid.DataSource = result.Certificates;
 						errorsGrid.DataSource = result.Errors;
-						statusLabel.Text = string.Format("ПК: {0}. {1}. КриптоПро: {2}.{3}Сертификатов: {4}; папок проверено: {5}; ошибок: {6}.",
+						statusLabel.Text = string.Format("ПК: {0}. {1}. КриптоПро: {2}.{3}Сертификатов: {4}; папок проверено: {5}; ошибок: {6}.{3}{7}",
 							result.ComputerName, DescribeStatus(result.Status), DescribeCryptoPro(result), Environment.NewLine,
-							result.Certificates.Count, result.ScannedDirectories, result.Errors.Count);
+							result.Certificates.Count, result.ScannedDirectories, result.Errors.Count, databaseStatus);
 					}
 				}
 				else
@@ -252,6 +256,43 @@ namespace Telecom.App
 				{
 					SetScanning(false);
 				}
+			}
+		}
+
+		// Записывает найденные сертификаты в MSSQL; сбой базы не отменяет показ результатов сканирования.
+		private string SaveToDatabase(ScanConfiguration configuration, ComputerScanResult result)
+		{
+			if (result.Status == ComputerScanStatus.Cancelled)
+			{
+				return "База данных: запись не выполнялась, проверка отменена.";
+			}
+
+			if (result.Certificates.Count == 0)
+			{
+				return "База данных: нет сертификатов для записи.";
+			}
+
+			if (configuration.ConnectionString.Length == 0)
+			{
+				return "База данных: строка подключения не задана, запись не выполнялась.";
+			}
+
+			try
+			{
+				var repository = new CertificateRepository(configuration.ConnectionString, logger);
+				CertificateSaveResult saved = repository.Save(result.Certificates, result.CryptoProVersion);
+				return string.Format("База данных: добавлено сертификатов: {0}; обновлено: {1}.", saved.Inserted, saved.Updated);
+			}
+			catch (Exception exception)
+			{
+				// Ошибки сервера, сети и неверной строки подключения ожидаемы; остальные считаются ошибками программы.
+				if (!(exception is DbException) && !(exception is InvalidOperationException) && !(exception is ArgumentException))
+				{
+					throw;
+				}
+
+				logger.Error("Ошибка записи в базу данных.", exception);
+				return "База данных: ошибка записи. " + exception.Message;
 			}
 		}
 

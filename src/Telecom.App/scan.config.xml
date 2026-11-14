@@ -7,6 +7,6 @@
     <path>C:\Program Files\Crypto Pro\CSP\csptest.exe</path>
     <path>C:\Program Files (x86)\Crypto Pro\CSP\csptest.exe</path>
   </cryptoProExecutables>
-  <!-- Подключение к БД будет использоваться на следующем этапе. Пароли в пример не добавляйте. -->
-  <connectionString>Server=YOUR_SQL_SERVER;Database=Certificates;Integrated Security=True</connectionString>
+  <!-- После проверки ПК сертификаты записываются в эту базу; таблица создаётся автоматически. Пароли в пример не добавляйте. -->
+  <connectionString>Server=YOUR_SQL_SERVER;Database=Certificates;Integrated Security=True;Connect Timeout=5</connectionString>
 </scanSettings>

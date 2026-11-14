@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Threading;
+using System.Threading.Tasks;
 using Telecom.Core;
 
 namespace Telecom.Tests
@@ -33,6 +34,8 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave));
 			tests.Add(new KeyValuePair<string, Action>("БД: один серийный номер в нескольких папках — одна строка", CheckDuplicateSerialNumber));
 			tests.Add(new KeyValuePair<string, Action>("БД: неизвестная версия КриптоПро и текст с кавычками", CheckMissingVersionAndQuotes));
+			tests.Add(new KeyValuePair<string, Action>("БД: одновременные первые запуски не спорят за создание таблицы", CheckParallelTableCreation));
+			tests.Add(new KeyValuePair<string, Action>("БД: пересекающиеся записи не дают дублей и времени обновления раньше внесения", CheckParallelSave));
 			tests.Add(new KeyValuePair<string, Action>("БД: недоступный сервер даёт исключение, а не пустой успех", CheckUnavailableDatabase));
 		}
 
@@ -115,6 +118,41 @@ namespace Telecom.Tests
 			Check.Equal(ownerName, stored.OwnerName);
 			Check.Equal("УЦ \"Тест\"", stored.CertificationAuthority);
 			Check.Equal(null, stored.CryptoProVersion);
+		}
+
+		// Проверяет гонку первого обращения: пока таблицы нет, её одновременно создают несколько запусков.
+		private static void CheckParallelTableCreation()
+		{
+			for (int attempt = 0; attempt < 5; attempt++)
+			{
+				DropCertificatesTable();
+				Parallel.For(0, 8, index =>
+				{
+					var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+					if (index % 2 == 0)
+					{
+						repository.EnsureTableExists();
+					}
+					else
+					{
+						repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
+					}
+				});
+				Check.Equal(2, CountRows());
+			}
+		}
+
+		// Проверяет, что при пересекающихся записях строк не становится больше, а время обновления не раньше внесения.
+		private static void CheckParallelSave()
+		{
+			DropCertificatesTable();
+			Parallel.For(0, 40, index =>
+			{
+				var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+				repository.Save(CreateCertificates("Иванов " + index), "5.0.13003");
+			});
+			Check.Equal(2, CountRows());
+			Check.Equal(0, (int)ExecuteScalar("SELECT COUNT(*) FROM dbo.Certificates WHERE UpdatedAt < CreatedAt;"));
 		}
 
 		// Проверяет, что ошибка подключения доходит до вызывающего кода.

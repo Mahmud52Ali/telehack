@@ -13,7 +13,9 @@ namespace Telecom.Core
 
 	public sealed class CertificateRepository
 	{
+		// Блокировка приложения пропускает к проверке и созданию таблицы только один запуск за раз.
 		private const string CreateTableSql = @"
+EXEC sp_getapplock @Resource = N'Telecom.Certificates.CreateTable', @LockMode = N'Exclusive', @LockOwner = N'Transaction';
 IF OBJECT_ID(N'dbo.Certificates', N'U') IS NULL
 BEGIN
 	CREATE TABLE dbo.Certificates
@@ -29,9 +31,12 @@ BEGIN
 END";
 
 		// Блокировка строки держится до конца транзакции, поэтому два запуска не вставят один серийный номер дважды.
+		// Время берётся с сервера базы данных и не уменьшается, даже если запуски пересеклись во времени.
 		private const string SaveCertificateSql = @"
+DECLARE @SavedAt DATETIME2(3) = SYSDATETIME();
+
 UPDATE dbo.Certificates WITH (UPDLOCK, HOLDLOCK)
-SET UpdatedAt = @SavedAt,
+SET UpdatedAt = CASE WHEN @SavedAt > UpdatedAt THEN @SavedAt ELSE UpdatedAt END,
 	OwnerName = @OwnerName,
 	CertificationAuthority = @CertificationAuthority,
 	CryptoProVersion = @CryptoProVersion,
@@ -72,7 +77,7 @@ END";
 			using (var connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
-				CreateTableIfMissing(connection, null);
+				CreateTableIfMissing(connection);
 			}
 		}
 
@@ -87,13 +92,12 @@ END";
 
 			var result = new CertificateSaveResult();
 			var savedSerialNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			DateTime savedAt = DateTime.Now;
 			using (var connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
+				CreateTableIfMissing(connection);
 				using (SqlTransaction transaction = connection.BeginTransaction())
 				{
-					CreateTableIfMissing(connection, transaction);
 					foreach (CertificateInfo certificate in certificates)
 					{
 						// Один сертификат может лежать в нескольких папках; в таблице ему соответствует одна строка.
@@ -102,7 +106,7 @@ END";
 							continue;
 						}
 
-						if (SaveCertificate(connection, transaction, certificate, cryptoProVersion, savedAt))
+						if (SaveCertificate(connection, transaction, certificate, cryptoProVersion))
 						{
 							result.Inserted++;
 						}
@@ -121,23 +125,27 @@ END";
 			return result;
 		}
 
-		// Выполняет создание таблицы в уже открытом соединении.
-		private static void CreateTableIfMissing(SqlConnection connection, SqlTransaction transaction)
+		// Создаёт таблицу в отдельной короткой транзакции: блокировка создания снимается при её завершении.
+		private static void CreateTableIfMissing(SqlConnection connection)
 		{
-			using (var command = new SqlCommand(CreateTableSql, connection, transaction))
+			using (SqlTransaction transaction = connection.BeginTransaction())
 			{
-				command.ExecuteNonQuery();
+				using (var command = new SqlCommand(CreateTableSql, connection, transaction))
+				{
+					command.ExecuteNonQuery();
+				}
+
+				transaction.Commit();
 			}
 		}
 
 		// Обновляет строку сертификата или добавляет новую; возвращает true, если строка добавлена.
 		private static bool SaveCertificate(SqlConnection connection, SqlTransaction transaction,
-			CertificateInfo certificate, string cryptoProVersion, DateTime savedAt)
+			CertificateInfo certificate, string cryptoProVersion)
 		{
 			using (var command = new SqlCommand(SaveCertificateSql, connection, transaction))
 			{
 				command.Parameters.Add("@SerialNumber", SqlDbType.NVarChar, 128).Value = certificate.SerialNumber;
-				command.Parameters.Add("@SavedAt", SqlDbType.DateTime2).Value = savedAt;
 				command.Parameters.Add("@OwnerName", SqlDbType.NVarChar, 512).Value = certificate.OwnerName ?? string.Empty;
 				command.Parameters.Add("@CertificationAuthority", SqlDbType.NVarChar, 512).Value =
 					certificate.CertificationAuthority ?? string.Empty;
