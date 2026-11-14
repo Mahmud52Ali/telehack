@@ -3,6 +3,9 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.Data" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/Telecom.Core/Telecom.Core.csproj" />
     <ProjectReference Include="../../src/Telecom.App/Telecom.App.csproj" />
   </ItemGroup>

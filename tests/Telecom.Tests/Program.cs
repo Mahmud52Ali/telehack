@@ -28,6 +28,7 @@ namespace Telecom.Tests
 				AddLoggerTests(tests);
 				AddConfigurationTests(tests);
 				AddComputerTests(tests);
+				AddDatabaseTests(tests);
 				int failures = 0;
 				foreach (KeyValuePair<string, Action> test in tests)
 				{
