@@ -13,6 +13,27 @@ namespace Telecom.Core
 
 	public sealed class CertificateRepository
 	{
+		private const int CreateDatabaseDeniedErrorNumber = 262;
+
+		// Имя базы экранирует сам сервер (QUOTENAME); блокировка не даёт двум запускам создавать базу одновременно.
+		private const string CreateDatabaseSql = @"
+EXEC sp_getapplock @Resource = N'Telecom.Certificates.CreateDatabase', @LockMode = N'Exclusive', @LockOwner = N'Session';
+BEGIN TRY
+	DECLARE @Created BIT = 0;
+	IF DB_ID(@DatabaseName) IS NULL
+	BEGIN
+		DECLARE @CreateSql NVARCHAR(300) = N'CREATE DATABASE ' + QUOTENAME(@DatabaseName);
+		EXEC (@CreateSql);
+		SET @Created = 1;
+	END
+	EXEC sp_releaseapplock @Resource = N'Telecom.Certificates.CreateDatabase', @LockOwner = N'Session';
+	SELECT @Created;
+END TRY
+BEGIN CATCH
+	EXEC sp_releaseapplock @Resource = N'Telecom.Certificates.CreateDatabase', @LockOwner = N'Session';
+	THROW;
+END CATCH";
+
 		// Блокировка приложения пропускает к проверке и созданию таблицы только один запуск за раз.
 		private const string CreateTableSql = @"
 EXEC sp_getapplock @Resource = N'Telecom.Certificates.CreateTable', @LockMode = N'Exclusive', @LockOwner = N'Transaction';
@@ -57,6 +78,7 @@ BEGIN
 END";
 
 		private readonly string connectionString;
+		private readonly string databaseName;
 		private readonly ILogger logger;
 
 		// Запоминает строку подключения; соединение открывается только на время одной операции.
@@ -67,16 +89,22 @@ END";
 				throw new ArgumentException("Не указана строка подключения к базе данных.", "connectionString");
 			}
 
+			// Без имени базы сервер подключил бы к базе по умолчанию, и таблица появилась бы не там, где её ждут.
+			databaseName = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
+			if (string.IsNullOrWhiteSpace(databaseName))
+			{
+				throw new ArgumentException("В строке подключения не указано имя базы данных (Database).", "connectionString");
+			}
+
 			this.connectionString = connectionString;
 			this.logger = logger;
 		}
 
-		// Создаёт таблицу сертификатов, если её ещё нет; существующую таблицу не изменяет.
+		// Создаёт базу и таблицу сертификатов, если их ещё нет; существующие не изменяет.
 		public void EnsureTableExists()
 		{
-			using (var connection = new SqlConnection(connectionString))
+			using (SqlConnection connection = OpenConnection())
 			{
-				connection.Open();
 				CreateTableIfMissing(connection);
 			}
 		}
@@ -92,9 +120,8 @@ END";
 
 			var result = new CertificateSaveResult();
 			var savedSerialNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			using (var connection = new SqlConnection(connectionString))
+			using (SqlConnection connection = OpenConnection())
 			{
-				connection.Open();
 				CreateTableIfMissing(connection);
 				using (SqlTransaction transaction = connection.BeginTransaction())
 				{
@@ -123,6 +150,72 @@ END";
 			logger.Info(string.Format("Запись в базу данных: добавлено сертификатов: {0}; обновлено: {1}.",
 				result.Inserted, result.Updated));
 			return result;
+		}
+
+		// Открывает соединение с базой из строки подключения, перед этим создавая базу, если её ещё нет.
+		// Проверка идёт до подключения: после неудачного входа драйвер несколько секунд повторяет ту же ошибку.
+		private SqlConnection OpenConnection()
+		{
+			CreateDatabaseIfMissing();
+			var connection = new SqlConnection(connectionString);
+			try
+			{
+				connection.Open();
+				return connection;
+			}
+			catch
+			{
+				connection.Dispose();
+				throw;
+			}
+		}
+
+		// Создаёт базу через служебную базу master: к несуществующей базе подключиться нельзя.
+		private void CreateDatabaseIfMissing()
+		{
+			var builder = new SqlConnectionStringBuilder(connectionString);
+			builder.InitialCatalog = "master";
+			bool created;
+			try
+			{
+				using (var connection = new SqlConnection(builder.ConnectionString))
+				using (var command = new SqlCommand(CreateDatabaseSql, connection))
+				{
+					command.Parameters.Add("@DatabaseName", SqlDbType.NVarChar, 128).Value = databaseName;
+					connection.Open();
+					created = (bool)command.ExecuteScalar();
+				}
+			}
+			catch (SqlException exception)
+			{
+				// Остальные ошибки (сервер недоступен, неверный пароль) передаются вызывающему коду без изменений.
+				if (!HasErrorNumber(exception, CreateDatabaseDeniedErrorNumber))
+				{
+					throw;
+				}
+
+				throw new InvalidOperationException("База данных \"" + databaseName + "\" не найдена на сервере, а у учётной записи нет права её создать. "
+					+ "Создайте базу вручную или выдайте учётной записи право на создание баз.", exception);
+			}
+
+			if (created)
+			{
+				logger.Info("Создана база данных: " + databaseName);
+			}
+		}
+
+		// Ищет номер ошибки SQL Server среди всех ошибок, вернувшихся с сервера.
+		private static bool HasErrorNumber(SqlException exception, int number)
+		{
+			foreach (SqlError error in exception.Errors)
+			{
+				if (error.Number == number)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		// Создаёт таблицу в отдельной короткой транзакции: блокировка создания снимается при её завершении.
