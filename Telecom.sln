@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Telecom.Core", "src\Telecom.Core\Telecom.Core.csproj", "{F9BAA4D3-888F-4483-BA47-E5676B889A8D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Telecom.App", "src\Telecom.App\Telecom.App.csproj", "{7969AC3A-88FA-464D-A2AD-9945173322B3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Telecom.Tests", "tests\Telecom.Tests\Telecom.Tests.csproj", "{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F9BAA4D3-888F-4483-BA47-E5676B889A8D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F9BAA4D3-888F-4483-BA47-E5676B889A8D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F9BAA4D3-888F-4483-BA47-E5676B889A8D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F9BAA4D3-888F-4483-BA47-E5676B889A8D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
