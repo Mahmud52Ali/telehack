@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.SqlClient;
 
 namespace Telecom.Core.Database
@@ -6,6 +7,7 @@ namespace Telecom.Core.Database
 	public static class DatabaseSchema
 	{
 		// Блокировка приложения разрешает одному запуску за раз создать таблицы.
+		// Таблицы ранней версии без нужных столбцов не перестраиваются: запрос завершается понятной ошибкой.
 		private const string EnsureSchemaSql = @"
 DECLARE @LockResult INT;
 EXEC @LockResult = sp_getapplock @Resource = N'Telecom.Certificates.CreateTable', @LockMode = N'Exclusive', @LockOwner = N'Transaction';
@@ -41,7 +43,22 @@ BEGIN
 	);
 	CREATE CLUSTERED INDEX IX_CertificateLocations_SerialNumber_ComputerAddress
 		ON dbo.CertificateLocations (SerialNumber, ComputerAddress);
+END;
+
+IF COL_LENGTH(N'dbo.Certificates', N'ExpiresAtUtc') IS NULL
+	OR COL_LENGTH(N'dbo.CertificateLocations', N'CheckStatus') IS NULL
+	OR COL_LENGTH(N'dbo.CertificateLocations', N'CheckedAtUtc') IS NULL
+BEGIN
+	THROW 50001, @OutdatedTablesMessage, 1;
 END";
+
+		// Текст ошибки для таблиц, созданных ранней версией программы без нужных столбцов.
+		// Приложение такие таблицы не перестраивает, чтобы не потерять данные без ведома администратора.
+		internal static string OutdatedTablesMessage(string databaseName)
+		{
+			return "Таблицы dbo.Certificates и dbo.CertificateLocations в базе «" + databaseName + "» созданы ранней версией "
+				+ "программы и не содержат нужных столбцов. Удалите обе таблицы — при следующем сканировании они создадутся заново.";
+		}
 
 		// Создаёт базу и таблицы, если их нет; существующие записи не меняются.
 		public static void EnsureExists(DatabaseConnection database)
@@ -59,6 +76,7 @@ END";
 			{
 				using (var command = new SqlCommand(EnsureSchemaSql, connection, transaction))
 				{
+					command.Parameters.Add("@OutdatedTablesMessage", SqlDbType.NVarChar, 2048).Value = OutdatedTablesMessage(connection.Database);
 					command.ExecuteNonQuery();
 				}
 

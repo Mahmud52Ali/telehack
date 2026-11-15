@@ -23,6 +23,7 @@ namespace Telecom.App.Windows
 		private const int NegotiateLogonProvider = 3;
 		private const int RegistryBinaryValue = 0x00000008;
 		private const int FileNotFound = 2;
+		private const int AccessDenied = 5;
 		private const int PathNotFound = 3;
 		private const int UnsupportedType = 1630;
 		private const int MaximumBlobSize = 4 * 1024 * 1024;
@@ -126,7 +127,12 @@ namespace Telecom.App.Windows
 			{
 				if (error != 0)
 				{
-					throw new Win32Exception(error, "Не удалось подключиться через службу «Удалённый реестр». " + new Win32Exception(error).Message);
+					// Отказ в доступе — вопрос прав учётной записи; остальные ошибки обычно значат, что служба на ПК не запущена.
+					string hint = error == AccessDenied
+						? " Проверьте права учётной записи этого ПК на чтение реестра."
+						: " Проверьте, что на целевом ПК запущена служба «Удалённый реестр» (RemoteRegistry).";
+					throw new Win32Exception(error, "Не удалось подключиться через службу «Удалённый реестр». "
+						+ new Win32Exception(error).Message + hint);
 				}
 
 				cancellationToken.ThrowIfCancellationRequested();

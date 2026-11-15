@@ -38,6 +38,7 @@ ORDER BY UpdatedAt DESC, SerialNumber;";
 			}
 			catch (SqlException exception)
 			{
+				ThrowIfOutdatedTables(exception);
 				if (!DatabaseConnection.HasErrorNumber(exception, DatabaseConnection.TableNotFoundErrorNumber))
 				{
 					throw;
@@ -57,12 +58,22 @@ ORDER BY UpdatedAt DESC, SerialNumber;";
 			}
 			catch (SqlException exception)
 			{
+				ThrowIfOutdatedTables(exception);
 				if (!DatabaseConnection.HasErrorNumber(exception, DatabaseConnection.TableNotFoundErrorNumber))
 				{
 					throw;
 				}
 
 				return new DataTable();
+			}
+		}
+
+		// Ошибка «нет такого столбца» означает таблицы ранней версии программы; заменяет её понятным сообщением.
+		private void ThrowIfOutdatedTables(SqlException exception)
+		{
+			if (DatabaseConnection.HasErrorNumber(exception, DatabaseConnection.InvalidColumnErrorNumber))
+			{
+				throw new InvalidOperationException(DatabaseSchema.OutdatedTablesMessage(database.DatabaseName), exception);
 			}
 		}
 

@@ -10,6 +10,7 @@ namespace Telecom.Core.Database
 	{
 		private const int CreateDatabaseDeniedErrorNumber = 262;
 		internal const int TableNotFoundErrorNumber = 208;
+		internal const int InvalidColumnErrorNumber = 207;
 
 		// Имя базы экранирует сам сервер (QUOTENAME); блокировка не даёт двум запускам создавать базу одновременно.
 		private const string CreateDatabaseSql = @"
@@ -34,6 +35,9 @@ END CATCH";
 		private readonly ILogger logger;
 
 		public string ConnectionString { get; private set; }
+
+		// Имя базы из строки подключения.
+		public string DatabaseName { get { return databaseName; } }
 
 		// Проверяет строку подключения сразу, чтобы ошибка настройки была видна до первого запроса.
 		public DatabaseConnection(string connectionString, ILogger logger)

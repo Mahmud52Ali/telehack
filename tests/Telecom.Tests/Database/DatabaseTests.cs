@@ -48,6 +48,7 @@ namespace Telecom.Tests
 			AddTest(tests, "БД: первое внесение, время в UTC и время обновления равно времени внесения", CheckFirstSave);
 			AddTest(tests, "БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave);
 			AddTest(tests, "БД: срок действия и повторный сбор путей без дублей", CheckRepeatedLocations);
+			AddTest(tests, "БД: таблицы ранней версии дают понятную ошибку и не меняются", CheckOutdatedTables);
 			AddTest(tests, "БД: обе таблицы, подсветка срока и удаление находок", CheckDatabaseView);
 			AddTest(tests, "БД: отдельная проверка файлов и ключей хранилища по сохранённым путям", CheckLocationVerification);
 			AddTest(tests, "БД: устаревшая проверка не перезаписывает новый итог и не восстанавливает удалённую находку", CheckLocationCheckVersions);
@@ -334,6 +335,46 @@ namespace Telecom.Tests
 			Check.Equal(true, second.UpdatedAt > first.UpdatedAt);
 			Check.Equal("Иванов И. И.", second.OwnerName);
 			Check.Equal("5.0.13455", second.CryptoProVersion);
+		}
+
+		// Таблица без столбца срока (ранняя версия) не перестраивается: запись и чтение сообщают, что её надо удалить.
+		private static void CheckOutdatedTables()
+		{
+			DropCertificatesTable();
+			ExecuteScalar(@"
+CREATE TABLE dbo.Certificates
+(
+	SerialNumber NVARCHAR(128) NOT NULL PRIMARY KEY,
+	CreatedAt DATETIME2(3) NOT NULL,
+	UpdatedAt DATETIME2(3) NOT NULL,
+	OwnerName NVARCHAR(512) NOT NULL,
+	CertificationAuthority NVARCHAR(512) NOT NULL,
+	CryptoProVersion NVARCHAR(64) NULL,
+	IsCryptoProLicenseEmbedded BIT NOT NULL
+);
+INSERT INTO dbo.Certificates VALUES (N'03A14016', '2025-10-26T10:20:00', '2025-10-26T10:20:00', N'Иванов', N'УЦ', NULL, 0);
+SELECT 0;");
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
+			Check.Equal(true, FailureMessage(() => repository.Save(CreateCertificates("Иванов"), null, "192.0.2.10")).Contains("ранней версией"));
+			Check.Equal(true, FailureMessage(() => repository.ReadAll()).Contains("ранней версией"));
+			Check.Equal(1, CountRows());
+			Check.Equal(DBNull.Value, ExecuteScalar("SELECT OBJECT_ID(N'dbo.CertificateLocations', N'U');"));
+			DropCertificatesTable();
+		}
+
+		// Выполняет действие, которое должно завершиться ошибкой, и возвращает её текст.
+		private static string FailureMessage(Action action)
+		{
+			try
+			{
+				action();
+			}
+			catch (Exception exception)
+			{
+				return exception.Message;
+			}
+
+			throw new InvalidOperationException("Ожидалась ошибка, но действие выполнилось.");
 		}
 
 		// Повторный сбор тех же находок не добавляет строк, а длинный путь и срок действия сохраняются.
