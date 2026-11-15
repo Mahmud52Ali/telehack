@@ -62,7 +62,7 @@ namespace Telecom.App
 		private readonly ToolStripMenuItem checkLocationMenuItem = new ToolStripMenuItem("Проверить наличие");
 		private readonly Label databaseStatusLabel = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
 		private CancellationTokenSource scanCancellation;
-		private CertificateRepository displayedCertificateRepository;
+		private DatabaseConnection displayedDatabase;
 		private bool databaseRefreshPending;
 		private bool deletingCertificate;
 		private bool checkingLocations;
@@ -433,7 +433,7 @@ namespace Telecom.App
 			var locations = certificateLocationsGrid.DataSource as DataTable;
 			checkLocationsButton.Enabled = checkingLocations ? !scanCancellation.IsCancellationRequested
 				: profilesLoaded && scanCancellation == null && refreshDatabaseButton.Enabled
-					&& displayedCertificateRepository != null && locations != null && locations.Rows.Count > 0;
+					&& displayedDatabase != null && locations != null && locations.Rows.Count > 0;
 			checkLocationMenuItem.Enabled = !checkingLocations && checkLocationsButton.Enabled
 				&& certificateLocationsGrid.CurrentRow != null;
 		}
@@ -466,8 +466,8 @@ namespace Telecom.App
 		private async Task CheckLocations(CertificateLocationCheck selectedLocation)
 		{
 			var rows = certificateLocationsGrid.DataSource as DataTable;
-			CertificateRepository repository = displayedCertificateRepository;
-			if (repository == null || rows == null || rows.Rows.Count == 0 || !refreshDatabaseButton.Enabled || scanCancellation != null)
+			DatabaseConnection database = displayedDatabase;
+			if (database == null || rows == null || rows.Rows.Count == 0 || !refreshDatabaseButton.Enabled || scanCancellation != null)
 			{
 				return;
 			}
@@ -484,7 +484,7 @@ namespace Telecom.App
 				logger.Info(selectedLocation == null ? "Начата проверка наличия всех сохранённых сертификатов."
 					: "Начата проверка наличия сертификата. Компьютер: " + selectedLocation.ComputerAddress
 						+ "; источник: " + selectedLocation.SourcePath + "; серийный номер: " + selectedLocation.SerialNumber);
-				string summary = await CheckLocationGroups(repository, profiles, selectedLocation, token);
+				string summary = await CheckLocationGroups(database, profiles, selectedLocation, token);
 				if (!IsDisposed && !closeWhenIdle && databaseButton.Checked)
 				{
 					await LoadDatabaseRows(summary);
@@ -506,7 +506,7 @@ namespace Telecom.App
 		}
 
 		// Сохраняет завершённые проверки по одному ПК и показывает ход работы.
-		private async Task<string> CheckLocationGroups(CertificateRepository repository, IDictionary<string, ComputerProfile> profiles,
+		private async Task<string> CheckLocationGroups(DatabaseConnection database, IDictionary<string, ComputerProfile> profiles,
 			CertificateLocationCheck selectedLocation, CancellationToken token)
 		{
 			int checkedLocations = 0;
@@ -515,7 +515,7 @@ namespace Telecom.App
 			{
 				ScanConfiguration configuration = await Task.Run(() => ScanConfigurationFile.Load(configurationFilePath), token);
 				var groups = await Task.Run(() => (selectedLocation == null
-						? repository.ReadLocations().Rows.Cast<DataRow>().Select(CreateLocationCheck)
+						? new CertificateReader(database).ReadLocations().Rows.Cast<DataRow>().Select(CreateLocationCheck)
 						: new[] { selectedLocation })
 					.GroupBy(location => location.ComputerAddress, StringComparer.OrdinalIgnoreCase).ToList(), token);
 				var checker = new CertificateLocationChecker(computerAccess, machineCertificateStore,
@@ -542,7 +542,7 @@ namespace Telecom.App
 							}
 						}
 
-						return repository.SaveLocationChecks(locations.Where(location => location.CheckedAtUtc != default(DateTime)));
+						return new LocationCheckWriter(database).SaveLocationChecks(locations.Where(location => location.CheckedAtUtc != default(DateTime)));
 					}, token);
 					checkedLocations += locations.Count(location => location.CheckedAtUtc != default(DateTime));
 					token.ThrowIfCancellationRequested();
@@ -568,7 +568,7 @@ namespace Telecom.App
 		// Загружает таблицу для текущих настроек и связывает результат с его исходной базой.
 		private async Task LoadDatabaseRows(string actionStatus)
 		{
-			displayedCertificateRepository = null;
+			displayedDatabase = null;
 			databaseGrid.DataSource = null;
 			certificateLocationsGrid.DataSource = null;
 			databaseStatusLabel.Text = "Загрузка записей…";
@@ -577,7 +577,7 @@ namespace Telecom.App
 				databaseRefreshPending = false;
 				bool showingLocations = databaseTables.SelectedTab == certificateLocationsPage;
 				DataGridView targetGrid = showingLocations ? certificateLocationsGrid : databaseGrid;
-				CertificateRepository repository = null;
+				DatabaseConnection database = null;
 				DataTable certificates = null;
 				string status;
 				try
@@ -590,8 +590,9 @@ namespace Telecom.App
 							return null;
 						}
 
-						repository = new CertificateRepository(configuration.ConnectionString, logger);
-						return showingLocations ? repository.ReadLocations() : repository.ReadAll();
+						database = new DatabaseConnection(configuration.ConnectionString, logger);
+						var reader = new CertificateReader(database);
+						return showingLocations ? reader.ReadLocations() : reader.ReadAll();
 					});
 					status = certificates == null
 						? "Укажите и сохраните строку подключения в разделе «Настройки → База данных»."
@@ -605,7 +606,7 @@ namespace Telecom.App
 
 				if (!IsDisposed && databaseButton.Checked && !databaseRefreshPending)
 				{
-					displayedCertificateRepository = certificates == null ? null : repository;
+					displayedDatabase = certificates == null ? null : database;
 					targetGrid.DataSource = certificates;
 					databaseStatusLabel.Text = actionStatus == null ? status : actionStatus + " " + status;
 				}
@@ -616,9 +617,9 @@ namespace Telecom.App
 		private async void OnDeleteCertificate(object sender, DataGridViewCellEventArgs args)
 		{
 			var grid = (DataGridView)sender;
-			CertificateRepository repository = displayedCertificateRepository;
+			DatabaseConnection database = displayedDatabase;
 			if (args.RowIndex < 0 || args.ColumnIndex < 0 || !(grid.Columns[args.ColumnIndex] is DataGridViewButtonColumn)
-				|| repository == null || !refreshDatabaseButton.Enabled)
+				|| database == null || !refreshDatabaseButton.Enabled)
 			{
 				return;
 			}
@@ -666,7 +667,7 @@ namespace Telecom.App
 			databaseStatusLabel.Text = "Удаление записи…";
 			try
 			{
-				string status = await Task.Run(() => DeleteCertificate(repository, serialNumber, createdAt, updatedAt,
+				string status = await Task.Run(() => DeleteCertificate(database, serialNumber, createdAt, updatedAt,
 					computerAddress, sourcePath, remainingLocations));
 				if (!IsDisposed && !closeWhenIdle && databaseButton.Checked)
 				{
@@ -685,7 +686,7 @@ namespace Telecom.App
 		}
 
 		// Выполняет запрос и записывает исход удаления вместе с учётной записью оператора.
-		private string DeleteCertificate(CertificateRepository repository, string serialNumber, DateTime createdAt, DateTime updatedAt,
+		private string DeleteCertificate(DatabaseConnection database, string serialNumber, DateTime createdAt, DateTime updatedAt,
 			string computerAddress, string sourcePath, int remainingLocations)
 		{
 			string auditDetails = string.Format("Серийный номер: {0}. Оператор: {1}\\{2}.",
@@ -696,13 +697,13 @@ namespace Telecom.App
 			{
 				if (computerAddress == null)
 				{
-					status = repository.TryDelete(serialNumber, createdAt, updatedAt)
+					status = new CertificateDeleter(database).TryDelete(serialNumber, createdAt, updatedAt)
 						? "Запись удалена." : "Запись уже удалена или обновлена с момента загрузки.";
 				}
 				else
 				{
 					auditDetails += " Компьютер: " + computerAddress + ". Путь: " + sourcePath + ".";
-					bool deleted = repository.TryDeleteLocation(serialNumber, createdAt, updatedAt, computerAddress, sourcePath, remainingLocations);
+					bool deleted = new CertificateDeleter(database).TryDeleteLocation(serialNumber, createdAt, updatedAt, computerAddress, sourcePath, remainingLocations);
 					status = !deleted ? "Данные изменились. Проверьте список и подтвердите удаление снова."
 						: remainingLocations == 0 ? "Записи о компьютере и сертификате удалены из базы данных."
 						: "Запись о компьютере для выбранного пути удалена. Сертификат остаётся в реестре.";
@@ -1246,8 +1247,8 @@ namespace Telecom.App
 			{
 				CertificateSaveResult saved = await Task.Run(() =>
 				{
-					var repository = new CertificateRepository(configuration.ConnectionString, logger);
-					return repository.Save(result.Certificates, result.CryptoProVersion, result.ComputerName);
+					var writer = new CertificateWriter(new DatabaseConnection(configuration.ConnectionString, logger), logger);
+					return writer.Save(result.Certificates, result.CryptoProVersion, result.ComputerName);
 				}, token);
 				item.DatabaseStatus = string.Format("Добавлено: {0}, обновлено: {1}", saved.Inserted, saved.Updated);
 				return true;

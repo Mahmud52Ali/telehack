@@ -113,7 +113,7 @@ namespace Telecom.Core.Configuration
 				configuration = writeTemporary(temporaryPath);
 				if (configuration.ConnectionString.Length > 0)
 				{
-					CertificateRepository.ParseConnectionString(configuration.ConnectionString);
+					DatabaseConnection.ParseConnectionString(configuration.ConnectionString);
 				}
 			}, replaceExisting);
 			return configuration;

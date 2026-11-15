@@ -359,7 +359,7 @@ namespace Telecom.App
 			ShowStatus(databaseStatus, "Проверка подключения…", false);
 			try
 			{
-				SqlConnectionStringBuilder settings = CertificateRepository.ParseConnectionString(connectionString);
+				SqlConnectionStringBuilder settings = DatabaseConnection.ParseConnectionString(connectionString);
 				settings.Pooling = false;
 				using (var connection = new SqlConnection(settings.ConnectionString))
 				{

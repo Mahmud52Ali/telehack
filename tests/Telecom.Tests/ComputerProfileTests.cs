@@ -17,7 +17,6 @@ using Telecom.Core.Access;
 using Telecom.Core.Certificates;
 using Telecom.Core.Common;
 using Telecom.Core.Computers;
-using Telecom.Core.Database;
 using Telecom.Core.Scanning;
 
 namespace Telecom.Tests
@@ -487,7 +486,7 @@ namespace Telecom.Tests
 							Check.Equal(2, CountRows());
 							Check.Equal("5.0.13455", ReadCertificate("03A14016").CryptoProVersion);
 							Check.Equal("5.0.13455", ReadCertificate("378F0E85").CryptoProVersion);
-							DataTable locations = new CertificateRepository(databaseConnectionString, logger).ReadLocations();
+							DataTable locations = new TestDatabase(databaseConnectionString, logger).ReadLocations();
 							Check.Equal(5, locations.Rows.Count);
 							Check.Equal(true, sources.SetEquals(locations.Rows.Cast<DataRow>().Select(row => (string)row["SourcePath"])));
 							Check.Equal(3, locations.Rows.Cast<DataRow>().Count(row => (string)row["ComputerAddress"] == ProfileComputerIp));

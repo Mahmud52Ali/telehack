@@ -74,7 +74,7 @@ namespace Telecom.Tests
 			string registry = "Реестр " + ProfileComputerIp + @"\LocalMachine\My\" + registryKey;
 			string missingRegistry = "Реестр " + ProfileComputerIp + @"\LocalMachine\My\missing-key";
 			var logger = new MemoryLogger();
-			var repository = new CertificateRepository(databaseConnectionString, logger);
+			var repository = new TestDatabase(databaseConnectionString, logger);
 			using (var workspace = new TestWorkspace())
 			{
 				string files = Path.Combine(workspace.DirectoryPath, "C$", "Certs");
@@ -228,7 +228,7 @@ namespace Telecom.Tests
 				string path = Path.Combine(workspace.DirectoryPath, "ivanov.cer");
 				File.Copy(Fixture(Ivanov, ".cer"), path);
 				var logger = new MemoryLogger();
-				var repository = new CertificateRepository(databaseConnectionString, logger);
+				var repository = new TestDatabase(databaseConnectionString, logger);
 				var certificate = new CertificateParser().Parse(File.ReadAllBytes(path), path);
 				repository.Save(new[] { certificate }, null, Environment.MachineName);
 				DataRow row = repository.ReadLocations().Rows[0];
@@ -285,7 +285,7 @@ namespace Telecom.Tests
 		private static void CheckTableCreation()
 		{
 			DropCertificatesTable();
-			var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			repository.EnsureTableExists();
 			Check.Equal(0, CountRows());
 			repository.EnsureTableExists();
@@ -296,7 +296,7 @@ namespace Telecom.Tests
 		private static void CheckFirstSave()
 		{
 			DropCertificatesTable();
-			var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			CertificateSaveResult result = repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
 			Check.Equal(2, result.Inserted);
 			Check.Equal(0, result.Updated);
@@ -315,7 +315,7 @@ namespace Telecom.Tests
 		private static void CheckRepeatedSave()
 		{
 			DropCertificatesTable();
-			var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
 			StoredCertificate first = ReadCertificate("03A14016");
 
@@ -349,7 +349,7 @@ CREATE TABLE dbo.Certificates
 );
 INSERT INTO dbo.Certificates VALUES (N'03A14016', '2025-10-26T10:20:00', '2025-10-26T10:20:00', N'Иванов', N'УЦ', NULL, 0);
 SELECT 0;");
-			var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			DataRow oldRecord = repository.ReadAll().Rows[0];
 			Check.Equal(DBNull.Value, oldRecord["ExpiresAtUtc"]);
 			Check.Equal(0, repository.ReadLocations().Rows.Count);
@@ -387,7 +387,7 @@ SELECT 0;");
 		{
 			DropCertificatesTable();
 			var logger = new MemoryLogger();
-			var repository = new CertificateRepository(databaseConnectionString, logger);
+			var repository = new TestDatabase(databaseConnectionString, logger);
 			using (var workspace = new TestWorkspace())
 			{
 				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
@@ -636,7 +636,7 @@ SELECT 0;");
 			var certificates = new List<CertificateInfo>();
 			certificates.Add(new CertificateInfo("03A14016", "Иванов", "УЦ", @"C:\Certs\a.cer", false));
 			certificates.Add(new CertificateInfo("03a14016", "Иванов", "УЦ", @"D:\Certs\a.cer", false));
-			var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			CertificateSaveResult result = repository.Save(certificates, null);
 			Check.Equal(1, result.Inserted);
 			Check.Equal(0, result.Updated);
@@ -650,7 +650,7 @@ SELECT 0;");
 			string ownerName = "О'Коннор'); DROP TABLE dbo.Certificates; --";
 			var certificates = new List<CertificateInfo>();
 			certificates.Add(new CertificateInfo("0A", ownerName, "УЦ \"Тест\"", @"C:\Certs\a.cer", false));
-			var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			repository.Save(certificates, null);
 
 			StoredCertificate stored = ReadCertificate("0A");
@@ -667,7 +667,7 @@ SELECT 0;");
 				DropCertificatesTable();
 				Parallel.For(0, 8, index =>
 				{
-					var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+					var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 					if (index % 2 == 0)
 					{
 						repository.EnsureTableExists();
@@ -687,7 +687,7 @@ SELECT 0;");
 			DropCertificatesTable();
 			Parallel.For(0, 40, index =>
 			{
-				var repository = new CertificateRepository(databaseConnectionString, new MemoryLogger());
+				var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 				repository.Save(CreateCertificates("Иванов " + index), "5.0.13003");
 			});
 			Check.Equal(2, CountRows());
@@ -701,7 +701,7 @@ SELECT 0;");
 			try
 			{
 				var logger = new MemoryLogger();
-				var repository = new CertificateRepository(CreatedDatabaseConnectionString(), logger);
+				var repository = new TestDatabase(CreatedDatabaseConnectionString(), logger);
 				CertificateSaveResult first = repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
 				Check.Equal(2, first.Inserted);
 				Check.Equal(true, logger.Messages.Contains("Создана база данных: " + CreatedDatabaseName));
@@ -726,7 +726,7 @@ SELECT 0;");
 			{
 				Parallel.For(0, 6, index =>
 				{
-					var repository = new CertificateRepository(CreatedDatabaseConnectionString(), new MemoryLogger());
+					var repository = new TestDatabase(CreatedDatabaseConnectionString(), new MemoryLogger());
 					repository.Save(CreateCertificates("Иванов Иван Иванович"), "5.0.13003");
 				});
 				Check.Equal(2, (int)ExecuteScalar(CreatedDatabaseConnectionString(), "SELECT COUNT(*) FROM dbo.Certificates;"));
@@ -757,7 +757,7 @@ SELECT 0;");
 					+ "', CHECK_POLICY = OFF; SELECT 0;");
 				builder.UserID = RestrictedLoginName;
 				builder.Password = password;
-				var repository = new CertificateRepository(builder.ConnectionString, new MemoryLogger());
+				var repository = new TestDatabase(builder.ConnectionString, new MemoryLogger());
 				Check.Throws<InvalidOperationException>(() => repository.Save(CreateCertificates("Иванов"), null));
 				Check.Equal(true, ExecuteScalar(MasterConnectionString(), "SELECT DB_ID(N'" + CreatedDatabaseName + "');") is DBNull);
 			}
@@ -770,11 +770,11 @@ SELECT 0;");
 		// Проверяет, что ошибка подключения доходит до вызывающего кода.
 		private static void CheckUnavailableDatabase()
 		{
-			var repository = new CertificateRepository(
+			var repository = new TestDatabase(
 				"Server=127.0.0.1,1;Database=TelecomTests;User Id=nobody;Password=nothing;Connect Timeout=2", new MemoryLogger());
 			Check.Throws<SqlException>(() => repository.Save(CreateCertificates("Иванов"), null));
-			Check.Throws<ArgumentException>(() => new CertificateRepository(" ", new MemoryLogger()));
-			Check.Throws<ArgumentException>(() => new CertificateRepository("Server=127.0.0.1;Integrated Security=True", new MemoryLogger()));
+			Check.Throws<ArgumentException>(() => new TestDatabase(" ", new MemoryLogger()));
+			Check.Throws<ArgumentException>(() => new TestDatabase("Server=127.0.0.1;Integrated Security=True", new MemoryLogger()));
 		}
 
 		// Создаёт два сертификата с серийными номерами образцов организаторов.
