@@ -35,12 +35,18 @@ namespace Telecom.Tests
 				AddScanCoordinatorTests(tests);
 				AddDatabaseTests(tests);
 				int failures = 0;
+				int skipped = 0;
 				foreach (KeyValuePair<string, Action> test in tests)
 				{
 					try
 					{
 						test.Value();
 						Console.WriteLine("PASS: " + test.Key);
+					}
+					catch (SkipTestException exception)
+					{
+						skipped++;
+						Console.WriteLine("SKIP: " + test.Key + " — " + exception.Message);
 					}
 					catch (Exception exception)
 					{
@@ -49,7 +55,7 @@ namespace Telecom.Tests
 					}
 				}
 
-				Console.WriteLine("Проверок: " + tests.Count + "; ошибок: " + failures);
+				Console.WriteLine("Проверок: " + tests.Count + "; ошибок: " + failures + "; пропущено: " + skipped);
 				return failures == 0 ? 0 : 1;
 			}
 			catch (Exception exception)
@@ -57,6 +63,20 @@ namespace Telecom.Tests
 				Console.Error.WriteLine(exception);
 				return 1;
 			}
+		}
+
+		// Регистрирует проверку, которой нужны Windows API или WinForms; на других ОС она пропускается.
+		private static void AddWindowsOnly(ICollection<KeyValuePair<string, Action>> tests, string name, Action test)
+		{
+			tests.Add(new KeyValuePair<string, Action>(name, () =>
+			{
+				if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+				{
+					throw new SkipTestException("нужна Windows");
+				}
+
+				test();
+			}));
 		}
 
 		// Находит исходные публичные примеры без копирования сертификатов в проект тестов.

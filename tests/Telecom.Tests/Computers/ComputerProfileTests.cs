@@ -14,7 +14,6 @@ using System.Windows.Forms;
 using System.Xml;
 using Telecom.App;
 using Telecom.App.Windows;
-using Telecom.Core.Access;
 using Telecom.Core.Certificates;
 using Telecom.Core.Common;
 using Telecom.Core.Computers;
@@ -37,12 +36,12 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("Список ПК: дубли не повреждают прежний файл", CheckDuplicateComputerProfiles));
 			tests.Add(new KeyValuePair<string, Action>("Список ПК: повреждённый XML и DTD не принимаются", CheckInvalidComputerProfiles));
 			tests.Add(new KeyValuePair<string, Action>("Список ПК: только полный IPv4 без имён и неоднозначных сокращений", CheckProfileIpv4));
-			tests.Add(new KeyValuePair<string, Action>("Редактор ПК: проверка IPv4 и путей с сохранением учётки", CheckComputerProfileDialog));
-			tests.Add(new KeyValuePair<string, Action>("Учётки Windows: запись, обновление и удаление собственного секрета", CheckWindowsCredentialStore));
+			AddWindowsOnly(tests, "Редактор ПК: проверка IPv4 и путей с сохранением учётки", CheckComputerProfileDialog);
+			AddWindowsOnly(tests, "Учётки Windows: запись, обновление и удаление собственного секрета", CheckWindowsCredentialStore);
 			tests.Add(new KeyValuePair<string, Action>("SMB: ПК без логина требует настройки перед подключением", CheckSmbWithoutCredentials));
-			tests.Add(new KeyValuePair<string, Action>("SMB: после проверки TCP используется сохранённая учётка ПК", CheckExplicitSmbConnection));
-			tests.Add(new KeyValuePair<string, Action>("SMB: конфликт учёток и отмена не отключают существующие сеансы", CheckSmbConnectionErrors));
-			tests.Add(new KeyValuePair<string, Action>("Интерфейс: сбор из папок и хранилища «Личное» с обработкой отказов", CheckComputerSelectionFlow));
+			AddWindowsOnly(tests, "SMB: после проверки TCP используется сохранённая учётка ПК", CheckExplicitSmbConnection);
+			AddWindowsOnly(tests, "SMB: конфликт учёток и отмена не отключают существующие сеансы", CheckSmbConnectionErrors);
+			AddWindowsOnly(tests, "Интерфейс: сбор из папок и хранилища «Личное» с обработкой отказов", CheckComputerSelectionFlow);
 		}
 
 		// Проверяет восстановление выбранного набора без паролей и разовых файлов рядом с настройками.
@@ -523,36 +522,6 @@ namespace Telecom.Tests
 			}
 		}
 
-		private sealed class LabMachineCertificateStore : IMachineCertificateStore
-		{
-			private readonly Action<ComputerProfile, CancellationToken, Action<string, byte[]>, Action<string, Exception>> read;
-			private readonly Action<ComputerProfile, IEnumerable<string>, CancellationToken, Action<string, byte[]>, Action<string, Exception>> readEntries;
-			internal int Reads { get; private set; }
-
-			// Задаёт сценарий чтения хранилища без доступа к реестру компьютеров пользователя.
-			internal LabMachineCertificateStore(Action<ComputerProfile, CancellationToken, Action<string, byte[]>, Action<string, Exception>> read,
-				Action<ComputerProfile, IEnumerable<string>, CancellationToken, Action<string, byte[]>, Action<string, Exception>> readEntries = null)
-			{
-				this.read = read;
-				this.readEntries = readEntries;
-			}
-
-			// Учитывает обращения к хранилищу отдельно от подключения SMB.
-			public void Read(ComputerProfile profile, CancellationToken cancellationToken,
-				Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
-			{
-				Reads++;
-				read(profile, cancellationToken, readCertificate, reportError);
-			}
-
-			public void ReadEntries(ComputerProfile profile, IEnumerable<string> entries, CancellationToken cancellationToken,
-				Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
-			{
-				Reads++;
-				readEntries(profile, entries, cancellationToken, readCertificate, reportError);
-			}
-		}
-
 		// Проверяет публичное поведение окна, не добавляя в продукт тестовых команд и режимов.
 		private static T FormField<T>(Control control, string name)
 		{
@@ -576,76 +545,6 @@ namespace Telecom.Tests
 			while (timer.Elapsed < TimeSpan.FromSeconds(10));
 
 			throw new TimeoutException("Окно не завершило операцию с тестовыми адаптерами.");
-		}
-
-		private sealed class SessionCheckedAccess : IComputerAccess
-		{
-			private readonly Dictionary<string, LabComputerAccess> computers;
-			internal readonly List<string> AttemptedComputers = new List<string>();
-			internal readonly HashSet<string> AuthenticatedComputers = new HashSet<string>();
-
-			// Сохраняет файловую часть существующего стенда и добавляет проверку предварительного входа.
-			internal SessionCheckedAccess(Dictionary<string, LabComputerAccess> computers)
-			{
-				this.computers = computers;
-			}
-
-			// Моделирует рабочий и недоступный ПК без обращения к DNS и сети.
-			public void CheckConnection(string computerName, int timeoutSeconds, CancellationToken cancellationToken)
-			{
-				cancellationToken.ThrowIfCancellationRequested();
-				AttemptedComputers.Add(computerName);
-				if (computerName == ProfileOfflineIp)
-				{
-					throw new TimeoutException("Тестовый компьютер недоступен.");
-				}
-
-				computers[computerName].CheckConnection(computerName, timeoutSeconds, cancellationToken);
-			}
-
-			// Проверяет отдельный сеанс для каждого ПК перед обращением к его каталогу.
-			private LabComputerAccess AuthorizedAccess(string path)
-			{
-				string computer = path.Split('\\')[2];
-				Check.Equal(true, AuthenticatedComputers.Contains(computer));
-				return computers[computer];
-			}
-
-			// Перечисляет файлы тестового диска после авторизации.
-			public IEnumerable<string> GetFiles(string directoryPath)
-			{
-				return AuthorizedAccess(directoryPath).GetFiles(directoryPath);
-			}
-
-			// Делегирует обход локального тестового диска.
-			public IEnumerable<string> GetDirectories(string directoryPath)
-			{
-				return AuthorizedAccess(directoryPath).GetDirectories(directoryPath);
-			}
-
-			// Проверяет признак ссылки через исходный адаптер.
-			public bool IsReparsePoint(string path)
-			{
-				return AuthorizedAccess(path).IsReparsePoint(path);
-			}
-
-			// Читает метаданные ссылки только после авторизации на соответствующем тестовом ПК.
-			public string GetReparsePointTarget(string path)
-			{
-				return AuthorizedAccess(path).GetReparsePointTarget(path);
-			}
-
-			// Учитывает только действительно прочитанные открытые сертификаты.
-			public byte[] ReadAllBytes(string filePath)
-			{
-				return AuthorizedAccess(filePath).ReadAllBytes(filePath);
-			}
-
-			// Моделирует отсутствие КриптоПро после успешной авторизации.
-			public string GetProductVersion(string executablePath)
-			{
-				return AuthorizedAccess(executablePath).GetProductVersion(executablePath);
-			}
 		}
 	}
 }

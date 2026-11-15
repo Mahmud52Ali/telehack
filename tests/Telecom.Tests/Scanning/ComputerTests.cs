@@ -16,12 +16,12 @@ namespace Telecom.Tests
 		// Регистрирует сценарии полного, частичного и неудачного сбора с моделируемого ПК.
 		private static void AddComputerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("ПК: два профиля по маске и версия КриптоПро", CheckComputerCollection));
-			tests.Add(new KeyValuePair<string, Action>("ПК: служебные ссылки распознаются по назначению независимо от языка", CheckProfileCompatibilityLinks));
-			tests.Add(new KeyValuePair<string, Action>("ПК: ссылки на профили и недоступные назначения остаются ошибками", CheckUnverifiedProfileLinks));
+			AddWindowsOnly(tests, "ПК: два профиля по маске и версия КриптоПро", CheckComputerCollection);
+			AddWindowsOnly(tests, "ПК: служебные ссылки распознаются по назначению независимо от языка", CheckProfileCompatibilityLinks);
+			AddWindowsOnly(tests, "ПК: ссылки на профили и недоступные назначения остаются ошибками", CheckUnverifiedProfileLinks);
 			tests.Add(new KeyValuePair<string, Action>("ПК: вложенные маски и диск D:", CheckNestedPatterns));
 			tests.Add(new KeyValuePair<string, Action>("ПК: перекрывающиеся папки не дублируют источники", CheckOverlappingSources));
-			tests.Add(new KeyValuePair<string, Action>("ПК: отказ доступа к профилю даёт частичный результат", CheckPartialComputer));
+			AddWindowsOnly(tests, "ПК: отказ доступа к профилю даёт частичный результат", CheckPartialComputer);
 			tests.Add(new KeyValuePair<string, Action>("ПК: закрытая административная папка отличается от отсутствующего файла", CheckDeniedComputer));
 			tests.Add(new KeyValuePair<string, Action>("ПК: сетевой отказ не превращается в пустой успех", CheckUnavailableComputer));
 			tests.Add(new KeyValuePair<string, Action>("ПК: пустые личные хранилища отличаются от отказа доступа", CheckEmptyUserCertificateStores));

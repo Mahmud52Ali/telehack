@@ -4,10 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Telecom.Core.Access;
-using Telecom.Core.Certificates;
 using Telecom.Core.Computers;
 using Telecom.Core.Configuration;
-using Telecom.Core.Database;
 using Telecom.Core.Scanning;
 
 namespace Telecom.Tests
@@ -177,56 +175,6 @@ namespace Telecom.Tests
 			{
 				return File.ReadAllBytes(Fixture(Ivanov, ".cer"));
 			}
-		}
-
-		// Подключение без сети: заданные IP падают с указанным исключением.
-		private sealed class FakeConnector : IComputerConnector
-		{
-			internal readonly Dictionary<string, Exception> Failures = new Dictionary<string, Exception>();
-			internal Action OnConnect;
-
-			// Вызывает OnConnect, затем бросает исключение, если оно задано для IP, и проверяет отмену.
-			public void Connect(ComputerProfile profile, int timeoutSeconds, CancellationToken cancellationToken)
-			{
-				if (OnConnect != null)
-				{
-					OnConnect();
-				}
-
-				cancellationToken.ThrowIfCancellationRequested();
-				Exception failure;
-				if (Failures.TryGetValue(profile.IpAddress, out failure))
-				{
-					throw failure;
-				}
-			}
-		}
-
-		// Запись в БД без MSSQL: запоминает вызовы или бросает заданное исключение.
-		private sealed class FakeCertificateWriter : ICertificateWriter
-		{
-			internal readonly List<SaveCall> Calls = new List<SaveCall>();
-			internal Exception Failure;
-
-			// Запоминает переданные данные и возвращает «всё добавлено».
-			public CertificateSaveResult Save(IEnumerable<CertificateInfo> certificates, string cryptoProVersion, string computerAddress)
-			{
-				if (Failure != null)
-				{
-					throw Failure;
-				}
-
-				Calls.Add(new SaveCall { Certificates = certificates.ToList(), CryptoProVersion = cryptoProVersion, ComputerAddress = computerAddress });
-				return new CertificateSaveResult();
-			}
-		}
-
-		// Параметры одного вызова записи.
-		private sealed class SaveCall
-		{
-			internal List<CertificateInfo> Certificates;
-			internal string CryptoProVersion;
-			internal string ComputerAddress;
 		}
 
 		// Синхронно собирает события хода работы, чтобы проверить их порядок.

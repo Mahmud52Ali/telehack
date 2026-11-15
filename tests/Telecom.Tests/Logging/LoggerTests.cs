@@ -24,8 +24,8 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("Параллельный журнал: 100 полных строк с миллисекундами", CheckConcurrentLogging));
 			tests.Add(new KeyValuePair<string, Action>("Полный журнал и копия ошибок с одинаковым временем и стеком", CheckExceptionLogging));
 			tests.Add(new KeyValuePair<string, Action>("Недоступный журнал не скрывает ошибку записи", CheckUnavailableLog));
-			tests.Add(new KeyValuePair<string, Action>("Ошибка проверки MSSQL попадает в журнал и интерфейс", () => CheckDatabaseFailureLogging(false)));
-			tests.Add(new KeyValuePair<string, Action>("Ошибка проверки MSSQL попадает в журнал после уничтожения панели", () => CheckDatabaseFailureLogging(true)));
+			AddWindowsOnly(tests, "Ошибка проверки MSSQL попадает в журнал и интерфейс", () => CheckDatabaseFailureLogging(false));
+			AddWindowsOnly(tests, "Ошибка проверки MSSQL попадает в журнал после уничтожения панели", () => CheckDatabaseFailureLogging(true));
 		}
 
 		// Моделирует таймаут MSSQL локальным TCP-портом без SQL Server и проверяет позднюю ошибку панели.

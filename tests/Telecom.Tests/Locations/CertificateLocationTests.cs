@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using Telecom.Core.Access;
 using Telecom.Core.Computers;
 using Telecom.Core.Locations;
 
@@ -20,9 +19,9 @@ namespace Telecom.Tests
 		{
 			tests.Add(new KeyValuePair<string, Action>("Наличие: сравнение номеров, отсутствие, отказ и повреждение без обхода папок", CheckLocationFiles));
 			tests.Add(new KeyValuePair<string, Action>("Наличие: локальный файл проверяется без SMB и учётных данных", CheckLocalLocationFile));
-			tests.Add(new KeyValuePair<string, Action>("Наличие: хранилище читает только сохранённые ключи один раз", CheckLocationStoreEntries));
-			tests.Add(new KeyValuePair<string, Action>("Наличие: сбой SMB не мешает хранилищу, неизвестный ПК остаётся непроверенным", CheckLocationConnectionFailures));
-			tests.Add(new KeyValuePair<string, Action>("Наличие: повторный отказ хранилища заменяет прежний успешный итог", CheckRepeatedLocationStoreFailure));
+			AddWindowsOnly(tests, "Наличие: хранилище читает только сохранённые ключи один раз", CheckLocationStoreEntries);
+			AddWindowsOnly(tests, "Наличие: сбой SMB не мешает хранилищу, неизвестный ПК остаётся непроверенным", CheckLocationConnectionFailures);
+			AddWindowsOnly(tests, "Наличие: повторный отказ хранилища заменяет прежний успешный итог", CheckRepeatedLocationStoreFailure);
 			tests.Add(new KeyValuePair<string, Action>("Наличие: отмена сохраняет итог прочитанного пути и не читает следующий", CheckLocationCancellation));
 			tests.Add(new KeyValuePair<string, Action>("Наличие: чужой UNC, маска и ссылка не дают ложного отсутствия", CheckLocationPathRestrictions));
 		}
@@ -203,54 +202,6 @@ namespace Telecom.Tests
 				string source = locations[index].SourcePath + ": ";
 				Check.Equal(source + statuses[index], source + locations[index].Status);
 				Check.Equal(true, locations[index].CheckedAtUtc != default(DateTime));
-			}
-		}
-
-		private sealed class AddressedCertificateFiles : ICertificateFileSystem
-		{
-			internal readonly Dictionary<string, byte[]> Contents = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
-			internal readonly Dictionary<string, Exception> Failures = new Dictionary<string, Exception>(StringComparer.OrdinalIgnoreCase);
-			internal readonly HashSet<string> LinkedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			internal readonly List<string> ReadPaths = new List<string>();
-			internal Action OnRead;
-
-			public IEnumerable<string> GetFiles(string directoryPath)
-			{
-				throw new InvalidOperationException("Адресная проверка не должна перечислять файлы.");
-			}
-
-			public IEnumerable<string> GetDirectories(string directoryPath)
-			{
-				throw new InvalidOperationException("Адресная проверка не должна обходить папки.");
-			}
-
-			public bool IsReparsePoint(string path)
-			{
-				Exception failure;
-				if (Failures.TryGetValue(path, out failure))
-				{
-					throw failure;
-				}
-				if (!Contents.ContainsKey(path))
-				{
-					throw new FileNotFoundException("Тестовый источник отсутствует.");
-				}
-				return LinkedPaths.Contains(path);
-			}
-
-			public string GetReparsePointTarget(string path)
-			{
-				throw new InvalidOperationException("Адресная проверка не должна переходить по ссылке.");
-			}
-
-			public byte[] ReadAllBytes(string filePath)
-			{
-				ReadPaths.Add(filePath);
-				if (OnRead != null)
-				{
-					OnRead();
-				}
-				return Contents[filePath];
 			}
 		}
 	}

@@ -29,8 +29,8 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: сохранение путей, таймаута и строки MSSQL", CheckConfigurationSave));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: проверка импорта, точное восстановление шаблона и повторное создание", CheckConfigurationReplacement));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: точная копия рабочего XML и восстановление после удаления", CheckConfigurationCopy));
-			tests.Add(new KeyValuePair<string, Action>("Настройки: прокрутка списков, сохранение и отмена из окна", CheckSettingsEditor));
-			tests.Add(new KeyValuePair<string, Action>("Персонализация: тема и масштаб применяются сразу и сохраняются отдельно", CheckPersonalization));
+			AddWindowsOnly(tests, "Настройки: прокрутка списков, сохранение и отмена из окна", CheckSettingsEditor);
+			AddWindowsOnly(tests, "Персонализация: тема и масштаб применяются сразу и сохраняются отдельно", CheckPersonalization);
 			tests.Add(new KeyValuePair<string, Action>("Пустые, ошибочные и повторяющиеся разделы отвергаются", CheckInvalidConfiguration));
 			tests.Add(new KeyValuePair<string, Action>("DTD и внешние XML-сущности запрещены", CheckExternalEntities));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: нормализация, повторы и таймаут", CheckConfigurationValidation));

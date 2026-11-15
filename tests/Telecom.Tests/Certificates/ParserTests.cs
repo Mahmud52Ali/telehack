@@ -14,8 +14,8 @@ namespace Telecom.Tests
 		{
 			tests.Add(new KeyValuePair<string, Action>("DER: Иванов и Петров", CheckDerCertificates));
 			tests.Add(new KeyValuePair<string, Action>("Base64 и PEM: Иванов и Петров", CheckTextCertificates));
-			tests.Add(new KeyValuePair<string, Action>("Сериализованные сертификаты Windows", CheckSerializedCertificates));
-			tests.Add(new KeyValuePair<string, Action>("Пропуск неизвестного свойства перед сертификатом", CheckUnknownSerializedProperty));
+			AddWindowsOnly(tests, "Сериализованные сертификаты Windows", CheckSerializedCertificates);
+			AddWindowsOnly(tests, "Пропуск неизвестного свойства перед сертификатом", CheckUnknownSerializedProperty);
 			tests.Add(new KeyValuePair<string, Action>("Отказ на пустом, обрезанном и постороннем содержимом", CheckInvalidCertificates));
 			tests.Add(new KeyValuePair<string, Action>("Отказ на переполненной и нулевой длине свойства", CheckInvalidSerializedLengths));
 			tests.Add(new KeyValuePair<string, Action>("PKCS#12 не импортируется как открытый сертификат", CheckPrivateKeyContainerRejected));
