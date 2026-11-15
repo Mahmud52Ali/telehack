@@ -43,7 +43,7 @@ namespace Telecom.Tests
 		// Записывает сертификаты без адреса компьютера.
 		internal CertificateSaveResult Save(IEnumerable<CertificateInfo> certificates, string cryptoProVersion)
 		{
-			return new CertificateWriter(database, logger).Save(certificates, cryptoProVersion);
+			return new CertificateWriter(database, logger).Save(certificates, cryptoProVersion, null);
 		}
 
 		// Записывает сертификаты и места их обнаружения на компьютере.

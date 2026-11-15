@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using Telecom.Core.Access;
 using Telecom.Core.Certificates;
@@ -25,90 +24,38 @@ namespace Telecom.Core.Scanning
 			this.logger = logger;
 		}
 
-		// Проверяет настроенные папки и версию КриптоПро на одном ПК.
-		public ComputerScanResult Scan(string computerName, ScanConfiguration configuration, CancellationToken cancellationToken)
-		{
-			return Scan(computerName, configuration, cancellationToken, null, null);
-		}
-
-		// Проверяет папки и хранилище «Личное»; локальный профиль читается без сетевого подключения.
-		public ComputerScanResult ScanProfile(ComputerProfile profile, ScanConfiguration configuration,
+		// Проверяет один ПК: папки из конфигурации, хранилище «Личное» (если machineStore задан) и версию КриптоПро.
+		// Ошибка отдельного источника не прерывает проверку остальных. Этот компьютер читается локально, без сети.
+		public ComputerScanResult Scan(ComputerProfile profile, ScanConfiguration configuration,
 			IMachineCertificateStore machineStore, CancellationToken cancellationToken)
 		{
-			return Scan(profile.IsLocal ? Environment.MachineName : profile.IpAddress, configuration, cancellationToken, profile, machineStore);
-		}
-
-		// Выполняет сбор с одного ПК и сохраняет доступные результаты при ошибках отдельных источников.
-		private ComputerScanResult Scan(string computerName, ScanConfiguration configuration, CancellationToken cancellationToken,
-			ComputerProfile profile, IMachineCertificateStore machineStore)
-		{
-			bool isLocal = profile != null && profile.IsLocal;
-			string computer = isLocal ? computerName : RemotePath.NormalizeComputerName(computerName);
 			if (configuration == null)
 			{
 				throw new ArgumentNullException("configuration");
 			}
 
+			string computer = profile.IsLocal ? Environment.MachineName : profile.IpAddress;
 			var result = new ComputerScanResult(computer);
-			bool storeChecked = false;
+			// Хотя бы один источник проверен без ошибок: тогда при ошибках остальных статус «частично», а не «недоступен».
+			bool sourceChecked = false;
 			logger.Info("Начало проверки компьютера: " + computer);
 			try
 			{
 				cancellationToken.ThrowIfCancellationRequested();
-				if (!isLocal)
+				if (!profile.IsLocal)
 				{
 					access.CheckConnection(computer, configuration.ConnectionTimeoutSeconds, cancellationToken);
 				}
-				var scanner = new DirectoryScanner(access, parser, logger);
-				var expander = new DirectoryPatternExpander(access, logger);
-				var scannedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				var certificatePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				foreach (string localPath in configuration.Directories)
-				{
-					cancellationToken.ThrowIfCancellationRequested();
-					string pattern = isLocal ? localPath : RemotePath.ToUnc(computer, localPath);
-					int errorsBefore = result.Errors.Count;
-					IList<string> paths = expander.Expand(pattern, result.Errors, cancellationToken);
-					// У доступных профилей хранилище «Личное» может быть пустым.
-					storeChecked |= paths.Count == 0 && result.Errors.Count == errorsBefore;
-					foreach (string path in paths)
-					{
-						if (!scannedPaths.Add(path))
-						{
-							continue;
-						}
 
-						DirectoryScanResult directory = scanner.Scan(path, cancellationToken);
-						foreach (CertificateInfo certificate in directory.Certificates)
-						{
-							if (certificatePaths.Add(certificate.SourcePath))
-							{
-								result.Certificates.Add(certificate);
-							}
-						}
-
-						foreach (ScanError error in directory.Errors)
-						{
-							result.Errors.Add(error);
-						}
-
-						result.ScannedDirectories += directory.ScannedDirectories;
-						result.SkippedFiles += directory.SkippedFiles;
-						if (directory.Cancelled)
-						{
-							throw new OperationCanceledException(cancellationToken);
-						}
-					}
-				}
-
+				ScanDirectories(computer, profile.IsLocal, configuration, result, ref sourceChecked, cancellationToken);
 				if (machineStore != null)
 				{
 					cancellationToken.ThrowIfCancellationRequested();
-					storeChecked |= ReadMachineStore(profile, machineStore, result, cancellationToken);
+					sourceChecked |= ReadMachineStore(profile, machineStore, result, cancellationToken);
 				}
 
-				new CryptoProVersionReader(access, logger).Read(configuration, result, isLocal, cancellationToken);
-				result.Status = GetStatus(result, storeChecked);
+				new CryptoProVersionReader(access, logger).Read(configuration, result, profile.IsLocal, cancellationToken);
+				result.Status = GetStatus(result, sourceChecked);
 			}
 			catch (OperationCanceledException)
 			{
@@ -123,12 +70,64 @@ namespace Telecom.Core.Scanning
 				}
 
 				RecordError(computer, exception, result);
-				result.Status = GetStatus(result, storeChecked);
+				result.Status = GetStatus(result, sourceChecked);
 			}
 
 			logger.Info(string.Format("Конец проверки ПК {0}: {1}; сертификатов: {2}; ошибок: {3}.",
 				computer, result.Status, result.Certificates.Count, result.Errors.Count));
 			return result;
+		}
+
+		// Раскрывает маски путей и сканирует найденные папки. Одна папка не сканируется дважды,
+		// один файл не попадает в результат дважды, даже если пути из конфигурации пересекаются.
+		// Маска, которая без ошибок раскрылась в пустой список (у профилей ещё нет «Личного»), считается проверенным источником.
+		private void ScanDirectories(string computer, bool isLocal, ScanConfiguration configuration, ComputerScanResult result,
+			ref bool sourceChecked, CancellationToken cancellationToken)
+		{
+			var scanner = new DirectoryScanner(access, parser, logger);
+			var expander = new DirectoryPatternExpander(access, logger);
+			var scannedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var certificatePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			foreach (string localPath in configuration.Directories)
+			{
+				cancellationToken.ThrowIfCancellationRequested();
+				string pattern = isLocal ? localPath : RemotePath.ToUnc(computer, localPath);
+				int errorsBefore = result.Errors.Count;
+				IList<string> paths = expander.Expand(pattern, result.Errors, cancellationToken);
+				sourceChecked |= paths.Count == 0 && result.Errors.Count == errorsBefore;
+				foreach (string path in paths)
+				{
+					if (scannedPaths.Add(path))
+					{
+						AddDirectory(scanner.Scan(path, cancellationToken), certificatePaths, result, cancellationToken);
+					}
+				}
+			}
+		}
+
+		// Переносит находки и ошибки одной папки в результат ПК; уже учтённые файлы пропускает.
+		private static void AddDirectory(DirectoryScanResult directory, HashSet<string> certificatePaths, ComputerScanResult result,
+			CancellationToken cancellationToken)
+		{
+			foreach (CertificateInfo certificate in directory.Certificates)
+			{
+				if (certificatePaths.Add(certificate.SourcePath))
+				{
+					result.Certificates.Add(certificate);
+				}
+			}
+
+			foreach (ScanError error in directory.Errors)
+			{
+				result.Errors.Add(error);
+			}
+
+			result.ScannedDirectories += directory.ScannedDirectories;
+			result.SkippedFiles += directory.SkippedFiles;
+			if (directory.Cancelled)
+			{
+				throw new OperationCanceledException(cancellationToken);
+			}
 		}
 
 		// Добавляет сертификаты из реестра к файловым находкам и отдельно отмечает сбой хранилища.
@@ -183,14 +182,14 @@ namespace Telecom.Core.Scanning
 		}
 
 		// Не объявляет полный успех при непроверенных ресурсах, даже если часть сертификатов найдена.
-		private static ComputerScanStatus GetStatus(ComputerScanResult result, bool storeChecked)
+		private static ComputerScanStatus GetStatus(ComputerScanResult result, bool sourceChecked)
 		{
 			if (result.Errors.Count == 0)
 			{
 				return ComputerScanStatus.Complete;
 			}
 
-			if (storeChecked || result.ScannedDirectories > 0 || result.Certificates.Count > 0)
+			if (sourceChecked || result.ScannedDirectories > 0 || result.Certificates.Count > 0)
 			{
 				return ComputerScanStatus.Partial;
 			}

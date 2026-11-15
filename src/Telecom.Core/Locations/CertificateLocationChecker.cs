@@ -16,17 +16,19 @@ namespace Telecom.Core.Locations
 	{
 		private readonly ICertificateFileSystem fileSystem;
 		private readonly IMachineCertificateStore machineStore;
-		private readonly Action<ComputerProfile, CancellationToken> connectSmb;
+		private readonly IComputerConnector connector;
+		private readonly int connectionTimeoutSeconds;
 		private readonly ILogger logger;
 		private readonly CertificateParser parser = new CertificateParser();
 
-		// connectSmb устанавливает сеанс с удалённым ПК перед чтением файлов; для локального ПК не вызывается.
+		// connector устанавливает сеанс с удалённым ПК перед чтением файлов; для локального ПК не вызывается.
 		public CertificateLocationChecker(ICertificateFileSystem fileSystem, IMachineCertificateStore machineStore,
-			Action<ComputerProfile, CancellationToken> connectSmb, ILogger logger)
+			IComputerConnector connector, int connectionTimeoutSeconds, ILogger logger)
 		{
 			this.fileSystem = fileSystem;
 			this.machineStore = machineStore;
-			this.connectSmb = connectSmb;
+			this.connector = connector;
+			this.connectionTimeoutSeconds = connectionTimeoutSeconds;
 			this.logger = logger;
 		}
 
@@ -77,7 +79,7 @@ namespace Telecom.Core.Locations
 			{
 				try
 				{
-					connectSmb(profile, token);
+					connector.Connect(profile, connectionTimeoutSeconds, token);
 				}
 				catch (Exception exception)
 				{

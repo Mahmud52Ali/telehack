@@ -13,6 +13,8 @@ namespace Telecom.Tests
 {
 	internal static partial class Program
 	{
+		private const string LabComputerIp = "192.0.2.30";
+
 		// Регистрирует сценарии полного, частичного и неудачного сбора с моделируемого ПК.
 		private static void AddComputerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
@@ -44,8 +46,8 @@ namespace Telecom.Tests
 				foreach (string name in new[] { "Default User", "All Users" })
 				{
 					Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", name));
-					access.LinkedPaths.Add(@"\\LAB-PC\C$\Users\" + name);
-					access.LinkTargets.Add(@"\\LAB-PC\C$\Users\" + name,
+					access.LinkedPaths.Add(@"\\192.0.2.30\C$\Users\" + name);
+					access.LinkTargets.Add(@"\\192.0.2.30\C$\Users\" + name,
 						name == "Default User" ? @"C:\Users\Default" : @"C:\ProgramData");
 				}
 				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
@@ -55,12 +57,12 @@ namespace Telecom.Tests
 				Check.Equal(2, result.ScannedDirectories);
 				Check.Equal("5.0.13003", result.CryptoProVersion);
 				Check.Equal(CryptoProStatus.Found, result.CryptoProStatus);
-				Check.Equal(RemotePath.ToUnc("LAB-PC", PrimaryCryptoPath), result.CryptoProSource);
+				Check.Equal(RemotePath.ToUnc(LabComputerIp, PrimaryCryptoPath), result.CryptoProSource);
 				Check.Equal(1, access.ConnectionChecks);
 				Check.Equal(3, access.RequestedTimeout);
 				foreach (CertificateInfo certificate in result.Certificates)
 				{
-					Check.Equal(true, certificate.SourcePath.StartsWith(@"\\LAB-PC\C$\Users\", StringComparison.Ordinal));
+					Check.Equal(true, certificate.SourcePath.StartsWith(@"\\192.0.2.30\C$\Users\", StringComparison.Ordinal));
 				}
 			}
 		}
@@ -82,13 +84,13 @@ namespace Telecom.Tests
 					}
 					else if (name == "Общие данные")
 					{
-						target = @"\\LAB-PC\C$\ProgramData\";
+						target = @"\\192.0.2.30\C$\ProgramData\";
 					}
-					access.LinkTargets.Add(@"\\LAB-PC\C$\Users\" + name, target);
+					access.LinkTargets.Add(@"\\192.0.2.30\C$\Users\" + name, target);
 				}
 				var logger = new MemoryLogger();
 				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), logger)
-					.Scan("LAB-PC", LabConfiguration(@"C:\Users\*\Certs"), CancellationToken.None);
+					.Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Complete, result.Status);
 				Check.Equal(2, result.Certificates.Count);
 				Check.Equal(0, result.Errors.Count);
@@ -107,12 +109,12 @@ namespace Telecom.Tests
 					CreateLabProfiles(workspace.DirectoryPath);
 					var access = CreateLabAccess(workspace.DirectoryPath);
 					Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "All Users"));
-					access.LinkTargets.Add(@"\\LAB-PC\C$\Users\All Users", target);
+					access.LinkTargets.Add(@"\\192.0.2.30\C$\Users\All Users", target);
 					ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
 					Check.Equal(ComputerScanStatus.Partial, result.Status);
 					Check.Equal(2, result.Certificates.Count);
 					Check.Equal(1, result.Errors.Count);
-					Check.Equal(@"\\LAB-PC\C$\Users\All Users\Certs", result.Errors[0].Path);
+					Check.Equal(@"\\192.0.2.30\C$\Users\All Users\Certs", result.Errors[0].Path);
 				}
 			}
 
@@ -120,7 +122,7 @@ namespace Telecom.Tests
 			{
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
-				string link = @"\\LAB-PC\C$\Users\Все пользователи";
+				string link = @"\\192.0.2.30\C$\Users\Все пользователи";
 				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "Все пользователи"));
 				access.LinkedPaths.Add(link);
 				access.LinkTargetErrors.Add(link, new UnauthorizedAccessException("Метаданные ссылки недоступны."));
@@ -135,12 +137,12 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
 				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Profiles", "All Users"));
-				access.LinkTargets.Add(@"\\LAB-PC\C$\Profiles\All Users", @"C:\ProgramData");
+				access.LinkTargets.Add(@"\\192.0.2.30\C$\Profiles\All Users", @"C:\ProgramData");
 				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs", @"C:\Profiles\*\Certs"));
 				Check.Equal(ComputerScanStatus.Partial, result.Status);
 				Check.Equal(2, result.Certificates.Count);
 				Check.Equal(1, result.Errors.Count);
-				Check.Equal(@"\\LAB-PC\C$\Profiles\All Users\Certs", result.Errors[0].Path);
+				Check.Equal(@"\\192.0.2.30\C$\Profiles\All Users\Certs", result.Errors[0].Path);
 			}
 		}
 
@@ -157,7 +159,7 @@ namespace Telecom.Tests
 				Check.Equal(ComputerScanStatus.Complete, result.Status);
 				Check.Equal(1, result.Certificates.Count);
 				Check.Equal("03A14016", result.Certificates[0].SerialNumber);
-				Check.Equal(true, result.Certificates[0].SourcePath.StartsWith(@"\\LAB-PC\D$\", StringComparison.Ordinal));
+				Check.Equal(true, result.Certificates[0].SourcePath.StartsWith(@"\\192.0.2.30\D$\", StringComparison.Ordinal));
 			}
 		}
 
@@ -181,16 +183,16 @@ namespace Telecom.Tests
 			{
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
-				access.DeniedPaths.Add(@"\\LAB-PC\C$\Users\Petrov");
+				access.DeniedPaths.Add(@"\\192.0.2.30\C$\Users\Petrov");
 				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "Redirected"));
-				access.LinkedPaths.Add(@"\\LAB-PC\C$\Users\Redirected");
+				access.LinkedPaths.Add(@"\\192.0.2.30\C$\Users\Redirected");
 				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
 				Check.Equal(ComputerScanStatus.Partial, result.Status);
 				Check.Equal(1, result.Certificates.Count);
 				Check.Equal("03A14016", result.Certificates[0].SerialNumber);
 				Check.Equal(2, result.Errors.Count);
 				Check.Equal(ScanErrorKind.AccessDenied, result.Errors[0].Kind);
-				Check.Equal(@"\\LAB-PC\C$\Users\Redirected\Certs", result.Errors[1].Path);
+				Check.Equal(@"\\192.0.2.30\C$\Users\Redirected\Certs", result.Errors[1].Path);
 			}
 		}
 
@@ -200,7 +202,7 @@ namespace Telecom.Tests
 			using (var workspace = new TestWorkspace())
 			{
 				var access = CreateLabAccess(workspace.DirectoryPath);
-				access.DeniedPaths.Add(@"\\LAB-PC\C$");
+				access.DeniedPaths.Add(@"\\192.0.2.30\C$");
 				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
 				Check.Equal(ComputerScanStatus.AccessDenied, result.Status);
 				Check.Equal(CryptoProStatus.Error, result.CryptoProStatus);
@@ -239,7 +241,7 @@ namespace Telecom.Tests
 				var scanner = new ComputerScanner(access, new CertificateParser(), new MemoryLogger());
 				var store = new LabMachineCertificateStore((target, token, readCertificate, reportError) => Check.Equal(computer, target.IpAddress));
 				ScanConfiguration configuration = ScanConfigurationFile.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml"));
-				ComputerScanResult empty = scanner.ScanProfile(profile, configuration, store, CancellationToken.None);
+				ComputerScanResult empty = scanner.Scan(profile, configuration, store, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Complete, empty.Status);
 				Check.Equal(0, empty.Certificates.Count);
 				Check.Equal(0, empty.Errors.Count);
@@ -249,18 +251,18 @@ namespace Telecom.Tests
 				{
 					throw new TimeoutException("Тестовый отказ удалённого реестра.");
 				});
-				ComputerScanResult unavailable = scanner.ScanProfile(profile, configuration, unavailableStore, CancellationToken.None);
+				ComputerScanResult unavailable = scanner.Scan(profile, configuration, unavailableStore, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Partial, unavailable.Status);
 				Check.Equal(1, unavailable.Errors.Count);
 				Check.Equal(ScanErrorKind.Unavailable, unavailable.Errors[0].Kind);
 
 				access.DeniedPaths.Add(@"\\192.0.2.10\C$\Users\Ivanov");
-				ComputerScanResult denied = scanner.ScanProfile(profile, configuration, store, CancellationToken.None);
+				ComputerScanResult denied = scanner.Scan(profile, configuration, store, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Partial, denied.Status);
 				Check.Equal(1, denied.Errors.Count);
 				Check.Equal(ScanErrorKind.AccessDenied, denied.Errors[0].Kind);
 
-				ComputerScanResult missingRoot = scanner.ScanProfile(profile, LabConfiguration(@"D:\Profiles\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates"),
+				ComputerScanResult missingRoot = scanner.Scan(profile, LabConfiguration(@"D:\Profiles\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates"),
 					store, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Partial, missingRoot.Status);
 				Check.Equal(1, missingRoot.Errors.Count);
@@ -298,7 +300,7 @@ namespace Telecom.Tests
 				Check.Equal(CryptoProStatus.NotFound, absent.CryptoProStatus);
 				Check.Equal(ComputerScanStatus.Complete, absent.Status);
 				Check.Equal(null, absent.CryptoProVersion);
-				string secondary = RemotePath.ToUnc("LAB-PC", SecondaryCryptoPath);
+				string secondary = RemotePath.ToUnc(LabComputerIp, SecondaryCryptoPath);
 				access.ProductVersions.Add(secondary, "5.0.13003.0");
 				Check.Equal("5.0.13003", ScanLab(access, LabConfiguration(@"C:\Users\*\Certs")).CryptoProVersion);
 				access.VersionErrors.Add(secondary, new UnauthorizedAccessException("Access denied"));
@@ -331,7 +333,7 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
 				cancellation.Cancel();
-				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan("LAB-PC", LabConfiguration(@"C:\Users\*\Certs"), cancellation.Token);
+				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, cancellation.Token);
 				Check.Equal(ComputerScanStatus.Cancelled, result.Status);
 				Check.Equal(0, access.ConnectionChecks);
 			}
@@ -342,7 +344,7 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
 				access.OnFileRead = () => cancellation.Cancel();
-				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan("LAB-PC", LabConfiguration(@"C:\Users\*\Certs"), cancellation.Token);
+				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, cancellation.Token);
 				Check.Equal(ComputerScanStatus.Cancelled, result.Status);
 				Check.Equal(1, result.Certificates.Count);
 			}
@@ -380,11 +382,17 @@ namespace Telecom.Tests
 			File.Copy(Fixture(Petrov, ".cer"), Path.Combine(petrov, "petrov.cer"));
 		}
 
+		// Профиль тестового удалённого ПК, файлы которого лежат во временной папке.
+		private static ComputerProfile LabProfile()
+		{
+			return new ComputerProfile(Guid.NewGuid(), LabComputerIp, "Тестовый ПК", @"LAB\reader", true);
+		}
+
 		// Подготавливает ожидаемую версию основного исполняемого файла КриптоПро.
 		private static LabComputerAccess CreateLabAccess(string root)
 		{
-			var access = new LabComputerAccess(root);
-			access.ProductVersions.Add(RemotePath.ToUnc("LAB-PC", PrimaryCryptoPath), "5.0.13003.0");
+			var access = new LabComputerAccess(root, LabComputerIp);
+			access.ProductVersions.Add(RemotePath.ToUnc(LabComputerIp, PrimaryCryptoPath), "5.0.13003.0");
 			return access;
 		}
 
@@ -397,7 +405,7 @@ namespace Telecom.Tests
 		// Запускает настоящий координатор сбора с тестовым адаптером доступа.
 		private static ComputerScanResult ScanLab(LabComputerAccess access, ScanConfiguration configuration)
 		{
-			return new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan("LAB-PC", configuration, CancellationToken.None);
+			return new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), configuration, null, CancellationToken.None);
 		}
 	}
 }

@@ -45,7 +45,7 @@ namespace Telecom.Tests
 			};
 			var logger = new MemoryLogger();
 			int connections = 0;
-			var checker = new CertificateLocationChecker(files, null, (profile, token) => connections++, logger);
+			var checker = new CertificateLocationChecker(files, null, new ActionConnector((profile, token) => connections++), 3, logger);
 			DateTime started = DateTime.UtcNow;
 			checker.CheckComputer(LocationComputerIp, LocationProfile(), locations, CancellationToken.None);
 			Check.Equal(1, connections);
@@ -67,7 +67,7 @@ namespace Telecom.Tests
 			var local = ComputerProfile.CreateLocal(false);
 			var location = new CertificateLocationCheck("378F0E85", Environment.MachineName, path, DateTime.Today, DateTime.Today);
 			var checker = new CertificateLocationChecker(files, null,
-				(profile, token) => { throw new InvalidOperationException("Локальный файл не должен требовать SMB."); }, new MemoryLogger());
+				new ActionConnector((profile, token) => { throw new InvalidOperationException("Локальный файл не должен требовать SMB."); }), 3, new MemoryLogger());
 			checker.CheckComputer(Environment.MachineName, local, new[] { location }, CancellationToken.None);
 			CheckLocationResults(new[] { location }, CertificateLocationStatus.Found);
 			Check.Equal(path, files.ReadPaths.Single());
@@ -96,7 +96,7 @@ namespace Telecom.Tests
 					error("denied", new UnauthorizedAccessException("Нет доступа к ключу."));
 				});
 			var checker = new CertificateLocationChecker(new AddressedCertificateFiles(), store,
-				(profile, token) => { throw new InvalidOperationException("Проверка реестра не должна подключать SMB."); }, logger);
+				new ActionConnector((profile, token) => { throw new InvalidOperationException("Проверка реестра не должна подключать SMB."); }), 3, logger);
 			checker.CheckComputer(LocationComputerIp, LocationProfile(), locations, CancellationToken.None);
 			CheckLocationResults(locations, CertificateLocationStatus.Found, CertificateLocationStatus.DifferentCertificate,
 				CertificateLocationStatus.Missing, CertificateLocationStatus.Unverified, CertificateLocationStatus.Unverified);
@@ -113,7 +113,7 @@ namespace Telecom.Tests
 				(profile, entries, token, read, error) => read("active", SerializeCertificateFixture(Ivanov)));
 			var logger = new MemoryLogger();
 			var checker = new CertificateLocationChecker(files, store,
-				(profile, token) => { throw new TimeoutException("ПК не ответил на SMB-подключение."); }, logger);
+				new ActionConnector((profile, token) => { throw new TimeoutException("ПК не ответил на SMB-подключение."); }), 3, logger);
 			checker.CheckComputer(LocationComputerIp, LocationProfile(), locations, CancellationToken.None);
 			CheckLocationResults(locations, CertificateLocationStatus.Unverified, CertificateLocationStatus.Found);
 			Check.Equal(0, files.ReadPaths.Count);
@@ -136,7 +136,7 @@ namespace Telecom.Tests
 				read("active", SerializeCertificateFixture(Ivanov));
 			});
 			var locations = new[] { LocationCheck("03A14016", LocationStore + "active") };
-			var checker = new CertificateLocationChecker(new AddressedCertificateFiles(), store, null, new MemoryLogger());
+			var checker = new CertificateLocationChecker(new AddressedCertificateFiles(), store, null, 3, new MemoryLogger());
 			checker.CheckComputer(LocationComputerIp, LocationProfile(), locations, CancellationToken.None);
 			CheckLocationResults(locations, CertificateLocationStatus.Found);
 			denied = true;
@@ -154,7 +154,7 @@ namespace Telecom.Tests
 				files.Contents.Add(LocationFile + ".next", File.ReadAllBytes(Fixture(Petrov, ".cer")));
 				files.OnRead = cancellation.Cancel;
 				var locations = new[] { LocationCheck("03A14016", LocationFile), LocationCheck("378F0E85", LocationFile + ".next") };
-				var checker = new CertificateLocationChecker(files, null, (profile, token) => { }, new MemoryLogger());
+				var checker = new CertificateLocationChecker(files, null, new ActionConnector((profile, token) => { }), 3, new MemoryLogger());
 				Check.Throws<OperationCanceledException>(() => checker.CheckComputer(LocationComputerIp, LocationProfile(), locations, cancellation.Token));
 				Check.Equal(CertificateLocationStatus.Found, locations[0].Status);
 				Check.Equal(default(DateTime), locations[1].CheckedAtUtc);
@@ -177,7 +177,7 @@ namespace Telecom.Tests
 				LocationCheck("03A14016", LocationFile)
 			};
 			var logger = new MemoryLogger();
-			var checker = new CertificateLocationChecker(files, null, (profile, token) => { }, logger);
+			var checker = new CertificateLocationChecker(files, null, new ActionConnector((profile, token) => { }), 3, logger);
 			checker.CheckComputer(LocationComputerIp, LocationProfile(), locations, CancellationToken.None);
 			CheckLocationResults(locations, CertificateLocationStatus.Unverified, CertificateLocationStatus.Unverified, CertificateLocationStatus.Unverified);
 			Check.Equal(0, files.ReadPaths.Count);

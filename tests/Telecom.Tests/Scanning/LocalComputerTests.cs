@@ -128,7 +128,7 @@ namespace Telecom.Tests
 					Check.Equal(false, profile.HasUserName);
 					readCertificate("machine-certificate", SerializeCertificateFixture(Ivanov));
 				});
-				ComputerScanResult result = scanner.ScanProfile(local, configuration, machineStore, CancellationToken.None);
+				ComputerScanResult result = scanner.Scan(local, configuration, machineStore, CancellationToken.None);
 				Check.Equal(Environment.MachineName, result.ComputerName);
 				Check.Equal(ComputerScanStatus.Partial, result.Status);
 				Check.Equal(3, result.Certificates.Count);
@@ -142,7 +142,7 @@ namespace Telecom.Tests
 				Check.Equal(true, result.Errors.Any(error => error.Path == denied && error.Kind == ScanErrorKind.AccessDenied));
 				Check.Equal(2, logger.Errors.Count);
 				cancellation.Cancel();
-				Check.Equal(ComputerScanStatus.Cancelled, scanner.ScanProfile(local, configuration, machineStore, cancellation.Token).Status);
+				Check.Equal(ComputerScanStatus.Cancelled, scanner.Scan(local, configuration, machineStore, cancellation.Token).Status);
 				Check.Equal(1, machineStore.Reads);
 			}
 		}

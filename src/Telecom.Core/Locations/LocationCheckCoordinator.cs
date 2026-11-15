@@ -43,8 +43,7 @@ namespace Telecom.Core.Locations
 			CancellationToken cancellationToken)
 		{
 			var summary = new LocationCheckSummary();
-			var checker = new CertificateLocationChecker(fileSystem, machineStore,
-				(profile, token) => connector.Connect(profile, connectionTimeoutSeconds, token), logger);
+			var checker = new CertificateLocationChecker(fileSystem, machineStore, connector, connectionTimeoutSeconds, logger);
 			var writer = new LocationCheckWriter(database);
 			try
 			{

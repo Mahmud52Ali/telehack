@@ -85,15 +85,15 @@ namespace Telecom.Tests
 				File.Copy(Fixture(Ivanov, ".cer"), Path.Combine(files, "untracked.cer"));
 				repository.Save(new[]
 				{
-					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, active, false),
-					new CertificateInfo(petrovSerial, Petrov, Petrov, active, false),
-					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, missing, false),
-					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, denied, false),
-					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, registry, false),
-					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, missingRegistry, false)
+					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, active, false, null),
+					new CertificateInfo(petrovSerial, Petrov, Petrov, active, false, null),
+					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, missing, false, null),
+					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, denied, false, null),
+					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, registry, false, null),
+					new CertificateInfo(ivanovSerial, Ivanov, Ivanov, missingRegistry, false, null)
 				}, null, ProfileComputerIp);
-				repository.Save(new[] { new CertificateInfo(ivanovSerial, Ivanov, Ivanov, @"C:\Certs\a.cer", false) }, null, ProfileOfflineIp);
-				repository.Save(new[] { new CertificateInfo(ivanovSerial, Ivanov, Ivanov, @"C:\Certs\a.cer", false) }, null, "192.0.2.99");
+				repository.Save(new[] { new CertificateInfo(ivanovSerial, Ivanov, Ivanov, @"C:\Certs\a.cer", false, null) }, null, ProfileOfflineIp);
+				repository.Save(new[] { new CertificateInfo(ivanovSerial, Ivanov, Ivanov, @"C:\Certs\a.cer", false, null) }, null, "192.0.2.99");
 				DateTime updatedAt = ReadCertificate(ivanovSerial).UpdatedAt;
 
 				var available = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Рабочий ПК", @"LAB-PC\reader", false);
@@ -234,7 +234,7 @@ namespace Telecom.Tests
 				DataRow row = repository.ReadLocations().Rows[0];
 				var location = new CertificateLocationCheck(certificate.SerialNumber, Environment.MachineName, path,
 					(DateTime)row["CreatedAt"], (DateTime)row["UpdatedAt"]);
-				var checker = new CertificateLocationChecker(new WindowsFileSystem(), null, null, logger);
+				var checker = new CertificateLocationChecker(new WindowsFileSystem(), null, null, 3, logger);
 				checker.CheckComputer(Environment.MachineName, ComputerProfile.CreateLocal(false), new[] { location }, CancellationToken.None);
 				Check.Equal(1, repository.SaveLocationChecks(new[] { location }));
 				Check.Equal(row["CreatedAt"], repository.ReadAll().Rows[0]["CreatedAt"]);
@@ -492,7 +492,7 @@ namespace Telecom.Tests
 					Check.Equal(true, status.Text.Contains("Сертификат остаётся в реестре."));
 					Check.Equal(true, logger.Messages.Last().Contains("192.0.2.11"));
 
-					repository.Save(new[] { new CertificateInfo("378F0E85", "Петров Петр Петрович", "Тестовый УЦ", @"D:\Backup\petrov.cer", false) },
+					repository.Save(new[] { new CertificateInfo("378F0E85", "Петров Петр Петрович", "Тестовый УЦ", @"D:\Backup\petrov.cer", false, null) },
 						null, "192.0.2.10");
 					refresh.PerformClick();
 					WaitForDatabaseView(refresh);
@@ -621,8 +621,8 @@ namespace Telecom.Tests
 		{
 			DropCertificatesTable();
 			var certificates = new List<CertificateInfo>();
-			certificates.Add(new CertificateInfo("03A14016", "Иванов", "УЦ", @"C:\Certs\a.cer", false));
-			certificates.Add(new CertificateInfo("03a14016", "Иванов", "УЦ", @"D:\Certs\a.cer", false));
+			certificates.Add(new CertificateInfo("03A14016", "Иванов", "УЦ", @"C:\Certs\a.cer", false, null));
+			certificates.Add(new CertificateInfo("03a14016", "Иванов", "УЦ", @"D:\Certs\a.cer", false, null));
 			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			CertificateSaveResult result = repository.Save(certificates, null);
 			Check.Equal(1, result.Inserted);
@@ -636,7 +636,7 @@ namespace Telecom.Tests
 			DropCertificatesTable();
 			string ownerName = "О'Коннор'); DROP TABLE dbo.Certificates; --";
 			var certificates = new List<CertificateInfo>();
-			certificates.Add(new CertificateInfo("0A", ownerName, "УЦ \"Тест\"", @"C:\Certs\a.cer", false));
+			certificates.Add(new CertificateInfo("0A", ownerName, "УЦ \"Тест\"", @"C:\Certs\a.cer", false, null));
 			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
 			repository.Save(certificates, null);
 

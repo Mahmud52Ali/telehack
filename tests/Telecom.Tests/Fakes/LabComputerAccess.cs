@@ -25,13 +25,7 @@ namespace Telecom.Tests
 		internal int ConnectionChecks;
 		internal int RequestedTimeout;
 
-		// Отображает административные папки тестового ПК на временный каталог дисков, не используя сеть.
-		internal LabComputerAccess(string root)
-			: this(root, "LAB-PC")
-		{
-		}
-
-		// Позволяет одному файловому стенду проверять как прежний внутренний адаптер, так и профили с IPv4.
+		// Отображает административные папки тестового ПК с указанным IPv4 на временный каталог дисков, не используя сеть.
 		internal LabComputerAccess(string root, string computer)
 		{
 			this.computer = computer;

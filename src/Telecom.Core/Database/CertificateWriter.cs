@@ -48,13 +48,7 @@ END";
 			this.logger = logger;
 		}
 
-		// Сохраняет сертификаты, для которых вызывающий код не передал адрес компьютера.
-		public CertificateSaveResult Save(IEnumerable<CertificateInfo> certificates, string cryptoProVersion)
-		{
-			return Save(certificates, cryptoProVersion, null);
-		}
-
-		// Записывает сертификаты и их места обнаружения в одной транзакции.
+		// Записывает сертификаты и их места обнаружения в одной транзакции; без адреса компьютера места не записываются.
 		public CertificateSaveResult Save(IEnumerable<CertificateInfo> certificates, string cryptoProVersion, string computerAddress)
 		{
 			if (certificates == null)

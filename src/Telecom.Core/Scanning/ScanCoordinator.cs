@@ -111,7 +111,7 @@ namespace Telecom.Core.Scanning
 		{
 			progress.Report(new ComputerProgress(profile, ComputerStage.Scanning));
 			ScanConfiguration computerConfiguration = configuration.WithAdditionalDirectories(profile.AdditionalDirectories);
-			ComputerScanResult result = scanner.ScanProfile(profile, computerConfiguration, machineStore, cancellationToken);
+			ComputerScanResult result = scanner.Scan(profile, computerConfiguration, machineStore, cancellationToken);
 			progress.Report(new ComputerProgress(profile, ComputerStage.Scanned, result));
 			if (result.Status == ComputerScanStatus.Cancelled)
 			{
