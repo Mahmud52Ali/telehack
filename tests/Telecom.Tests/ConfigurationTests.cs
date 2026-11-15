@@ -69,8 +69,8 @@ namespace Telecom.Tests
 				string configurationPath = Path.Combine(applicationDirectory, "configs", "scan.config.xml");
 				try
 				{
-					Check.Equal(true, ScanConfiguration.CreateFromTemplate(configurationPath, templatePath));
-					ScanConfiguration configuration = ScanConfiguration.Load(configurationPath);
+					Check.Equal(true, ScanConfigurationFile.CreateFromTemplate(configurationPath, templatePath));
+					ScanConfiguration configuration = ScanConfigurationFile.Load(configurationPath);
 					Check.Equal(1, configuration.Directories.Count);
 					Check.Equal(@"C:\Users\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates", configuration.Directories[0]);
 					Check.Equal(2, configuration.CryptoProExecutables.Count);
@@ -99,7 +99,7 @@ namespace Telecom.Tests
 				File.WriteAllText(configurationPath, editedXml);
 				string templatePath = Path.Combine(applicationDirectory, ConfigurationTemplateName);
 				File.WriteAllText(templatePath, ConfigurationXml());
-				Check.Equal(false, ScanConfiguration.CreateFromTemplate(configurationPath, templatePath));
+				Check.Equal(false, ScanConfigurationFile.CreateFromTemplate(configurationPath, templatePath));
 				Check.Equal(editedXml, File.ReadAllText(configurationPath));
 				Check.Equal(1, Directory.GetFiles(settingsDirectory).Length);
 			}
@@ -114,9 +114,9 @@ namespace Telecom.Tests
 				const string connection = "Server=EXAMPLE;Database=Certificates;User Id=sample;Password=\"dummy<&;>\"";
 				var configuration = new ScanConfiguration(new[] { @"c:/Team & Co/*/Certs", @"D:\Отдел" },
 					new[] { SecondaryCryptoPath, PrimaryCryptoPath }, 17, connection);
-				configuration.Save(path);
+				ScanConfigurationFile.Save(configuration, path);
 
-				ScanConfiguration reloaded = ScanConfiguration.Load(path);
+				ScanConfiguration reloaded = ScanConfigurationFile.Load(path);
 				Check.Equal(2, reloaded.Directories.Count);
 				Check.Equal(@"C:\Team & Co\*\Certs", reloaded.Directories[0]);
 				Check.Equal(@"D:\Отдел", reloaded.Directories[1]);
@@ -125,8 +125,8 @@ namespace Telecom.Tests
 				Check.Equal(connection, reloaded.ConnectionString);
 
 				var invalidDatabase = new ScanConfiguration(reloaded.Directories, reloaded.CryptoProExecutables, 18, "Server=EXAMPLE");
-				Check.Throws<ArgumentException>(() => invalidDatabase.Save(path));
-				Check.Equal(17, ScanConfiguration.Load(path).ConnectionTimeoutSeconds);
+				Check.Throws<ArgumentException>(() => ScanConfigurationFile.Save(invalidDatabase, path));
+				Check.Equal(17, ScanConfigurationFile.Load(path).ConnectionTimeoutSeconds);
 				Check.Equal(1, Directory.GetFiles(Path.GetDirectoryName(path)).Length);
 			}
 		}
@@ -139,28 +139,28 @@ namespace Telecom.Tests
 				string path = Path.Combine(workspace.DirectoryPath, "configs", "scan.config.xml");
 				string template = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ConfigurationTemplateName);
 				string source = Path.Combine(workspace.DirectoryPath, "office.xml");
-				ScanConfiguration.CreateFromTemplate(path, template);
+				ScanConfigurationFile.CreateFromTemplate(path, template);
 				string importedXml = "<!-- Конфигурация подразделения -->\r\n"
 					+ ConfigurationXml().Replace(@"C:\Certs", @"D:\Imported")
 						.Replace("</scanSettings>", "<connectionString>Server=EXAMPLE;Database=Certificates</connectionString></scanSettings>");
 				File.WriteAllText(source, importedXml, System.Text.Encoding.Unicode);
-				ScanConfiguration imported = ScanConfiguration.Import(source, path);
+				ScanConfiguration imported = ScanConfigurationFile.Import(source, path);
 				Check.Equal(@"D:\Imported", imported.Directories[0]);
 				Check.Equal(File.ReadAllText(source), File.ReadAllText(path));
 				Check.Equal(Convert.ToBase64String(File.ReadAllBytes(source)), Convert.ToBase64String(File.ReadAllBytes(path)));
 
 				File.WriteAllText(source, "<scanSettings>");
-				Check.Throws<XmlException>(() => ScanConfiguration.Import(source, path));
+				Check.Throws<XmlException>(() => ScanConfigurationFile.Import(source, path));
 				File.WriteAllText(source, importedXml.Replace("Database=Certificates", "UnknownSetting=Certificates"));
-				Check.Throws<ArgumentException>(() => ScanConfiguration.Import(source, path));
+				Check.Throws<ArgumentException>(() => ScanConfigurationFile.Import(source, path));
 				Check.Equal(importedXml, File.ReadAllText(path));
 				Check.Equal(1, Directory.GetFiles(Path.GetDirectoryName(path)).Length);
 
-				ScanConfiguration restored = ScanConfiguration.Import(template, path);
+				ScanConfiguration restored = ScanConfigurationFile.Import(template, path);
 				Check.Equal(string.Empty, restored.ConnectionString);
 				Check.Equal(File.ReadAllText(template), File.ReadAllText(path));
 				File.Delete(path);
-				Check.Equal(true, ScanConfiguration.CreateFromTemplate(path, template));
+				Check.Equal(true, ScanConfigurationFile.CreateFromTemplate(path, template));
 				Check.Equal(File.ReadAllText(template), File.ReadAllText(path));
 			}
 		}
@@ -176,14 +176,14 @@ namespace Telecom.Tests
 					"<connectionString>Server=EXAMPLE;Database=Certificates</connectionString></scanSettings>");
 				File.WriteAllText(path, xml, System.Text.Encoding.Unicode);
 				File.WriteAllText(copy, "Предыдущая копия");
-				ScanConfiguration.SaveCopy(path, copy);
+				ScanConfigurationFile.SaveCopy(path, copy);
 				Check.Equal(true, File.ReadAllBytes(path).SequenceEqual(File.ReadAllBytes(copy)));
-				Check.Throws<IOException>(() => ScanConfiguration.SaveCopy(path, path));
+				Check.Throws<IOException>(() => ScanConfigurationFile.SaveCopy(path, path));
 				File.WriteAllText(path, "<scanSettings>");
-				Check.Throws<XmlException>(() => ScanConfiguration.SaveCopy(path, copy));
+				Check.Throws<XmlException>(() => ScanConfigurationFile.SaveCopy(path, copy));
 				Check.Equal(xml, File.ReadAllText(copy));
 				File.Delete(path);
-				Check.Equal("Server=EXAMPLE;Database=Certificates", ScanConfiguration.Import(copy, path).ConnectionString);
+				Check.Equal("Server=EXAMPLE;Database=Certificates", ScanConfigurationFile.Import(copy, path).ConnectionString);
 				Check.Equal(true, File.ReadAllBytes(path).SequenceEqual(File.ReadAllBytes(copy)));
 				Check.Equal(2, Directory.GetFiles(workspace.DirectoryPath).Length);
 			}
@@ -231,12 +231,12 @@ namespace Telecom.Tests
 				save.PerformClick();
 				Check.Equal(true, save.Enabled);
 				string path = Path.Combine(workspace.DirectoryPath, "scan.config.xml");
-				Check.Equal(3, ScanConfiguration.Load(path).ConnectionTimeoutSeconds);
+				Check.Equal(3, ScanConfigurationFile.Load(path).ConnectionTimeoutSeconds);
 
 				database.Text = connection;
 				save.PerformClick();
 				Check.Equal(false, save.Enabled);
-				ScanConfiguration saved = ScanConfiguration.Load(path);
+				ScanConfiguration saved = ScanConfigurationFile.Load(path);
 				Check.Equal(25, saved.Directories.Count);
 				Check.Equal(26, saved.CryptoProExecutables.Count);
 				Check.Equal(9, saved.ConnectionTimeoutSeconds);
@@ -361,23 +361,23 @@ namespace Telecom.Tests
 			using (var workspace = new TestWorkspace())
 			{
 				string path = Path.Combine(workspace.DirectoryPath, "settings.xml");
-				Check.Throws<FileNotFoundException>(() => ScanConfiguration.Load(path));
+				Check.Throws<FileNotFoundException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, "<scanSettings>");
-				Check.Throws<XmlException>(() => ScanConfiguration.Load(path));
+				Check.Throws<XmlException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, "<wrongRoot />");
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, "<scanSettings><directories /></scanSettings>");
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("</scanSettings>", "<directories><directory>C:\\Extra</directory></directories></scanSettings>"));
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("<directory>", "<direcotry>").Replace("</directory>", "</direcotry>"));
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("connectionTimeoutSeconds", "connectionTimoutSeconds"));
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("<directory>", "<directory recurse=\"false\">"));
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("</scanSettings>", "<connectionString>first</connectionString><connectionString>second</connectionString></scanSettings>"));
-				Check.Throws<InvalidDataException>(() => ScanConfiguration.Load(path));
+				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 			}
 		}
 
@@ -389,7 +389,7 @@ namespace Telecom.Tests
 				string path = Path.Combine(workspace.DirectoryPath, "external.xml");
 				File.WriteAllText(path, "<!DOCTYPE scanSettings [<!ENTITY external SYSTEM 'file:///unreadable'>]>" +
 					ConfigurationXml().Replace("</scanSettings>", "<connectionString>&external;</connectionString></scanSettings>"));
-				Check.Throws<XmlException>(() => ScanConfiguration.Load(path));
+				Check.Throws<XmlException>(() => ScanConfigurationFile.Load(path));
 			}
 		}
 

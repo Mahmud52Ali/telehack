@@ -526,7 +526,7 @@ namespace Telecom.App
 
 				try
 				{
-					ScanConfiguration.SaveCopy(configurationPath, dialog.FileName);
+					ScanConfigurationFile.SaveCopy(configurationPath, dialog.FileName);
 					ShowStatus(statusLabel, "Копия сохранена. " + dialog.FileName, false);
 				}
 				catch (Exception exception)
@@ -583,7 +583,7 @@ namespace Telecom.App
 		{
 			try
 			{
-				ScanConfiguration configuration = ScanConfiguration.Import(sourcePath, configurationPath);
+				ScanConfiguration configuration = ScanConfigurationFile.Import(sourcePath, configurationPath);
 				ApplyConfiguration(configuration);
 				OnConfigurationSaved(successMessage);
 			}
@@ -611,7 +611,7 @@ namespace Telecom.App
 				}
 
 				var configuration = new ScanConfiguration(directories, cryptoPaths, timeout, connectionInput.Text.Trim());
-				configuration.Save(configurationPath);
+				ScanConfigurationFile.Save(configuration, configurationPath);
 				ApplyConfiguration(configuration);
 				OnConfigurationSaved("Настройки сохранены.");
 			}
@@ -626,7 +626,7 @@ namespace Telecom.App
 		{
 			try
 			{
-				ApplyConfiguration(ScanConfiguration.Load(configurationPath));
+				ApplyConfiguration(ScanConfigurationFile.Load(configurationPath));
 				ShowStatus(statusLabel, string.Empty, false);
 			}
 			catch (Exception exception)

@@ -238,7 +238,7 @@ namespace Telecom.Tests
 				var access = new LabComputerAccess(workspace.DirectoryPath, computer);
 				var scanner = new ComputerScanner(access, new CertificateParser(), new MemoryLogger());
 				var store = new LabMachineCertificateStore((target, token, readCertificate, reportError) => Check.Equal(computer, target.IpAddress));
-				ScanConfiguration configuration = ScanConfiguration.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml"));
+				ScanConfiguration configuration = ScanConfigurationFile.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml"));
 				ComputerScanResult empty = scanner.ScanProfile(profile, configuration, store, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Complete, empty.Status);
 				Check.Equal(0, empty.Certificates.Count);

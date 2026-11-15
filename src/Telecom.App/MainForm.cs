@@ -513,7 +513,7 @@ namespace Telecom.App
 			int savedLocations = 0;
 			try
 			{
-				ScanConfiguration configuration = await Task.Run(() => ScanConfiguration.Load(configurationFilePath), token);
+				ScanConfiguration configuration = await Task.Run(() => ScanConfigurationFile.Load(configurationFilePath), token);
 				var groups = await Task.Run(() => (selectedLocation == null
 						? repository.ReadLocations().Rows.Cast<DataRow>().Select(CreateLocationCheck)
 						: new[] { selectedLocation })
@@ -584,7 +584,7 @@ namespace Telecom.App
 				{
 					certificates = await Task.Run(() =>
 					{
-						ScanConfiguration configuration = ScanConfiguration.Load(configurationFilePath);
+						ScanConfiguration configuration = ScanConfigurationFile.Load(configurationFilePath);
 						if (configuration.ConnectionString.Length == 0)
 						{
 							return null;
@@ -837,8 +837,8 @@ namespace Telecom.App
 		{
 			try
 			{
-				bool created = ScanConfiguration.CreateFromTemplate(configurationFilePath, configurationTemplatePath);
-				ScanConfiguration.Load(configurationFilePath);
+				bool created = ScanConfigurationFile.CreateFromTemplate(configurationFilePath, configurationTemplatePath);
+				ScanConfigurationFile.Load(configurationFilePath);
 				if (created)
 				{
 					logger.Info("Создан рабочий файл конфигурации из шаблона: " + configurationFilePath);
@@ -1103,7 +1103,7 @@ namespace Telecom.App
 
 			try
 			{
-				ScanConfiguration configuration = await Task.Run(() => ScanConfiguration.Load(configurationFilePath), token);
+				ScanConfiguration configuration = await Task.Run(() => ScanConfigurationFile.Load(configurationFilePath), token);
 				var connected = new List<ComputerListItem>();
 				foreach (ComputerListItem item in selected)
 				{

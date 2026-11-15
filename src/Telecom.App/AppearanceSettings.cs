@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Xml;
+using Telecom.Core.Common;
 
 namespace Telecom.App
 {
@@ -33,11 +34,10 @@ namespace Telecom.App
 		internal static AppearanceSettings Load(string path)
 		{
 			var document = new XmlDocument();
-			var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 4096 };
 			try
 			{
-				using (var stream = File.OpenRead(path))
-				using (var reader = XmlReader.Create(stream, readerSettings))
+				using (FileStream stream = File.OpenRead(path))
+				using (XmlReader reader = SafeXml.CreateReader(stream, 4096))
 				{
 					document.Load(reader);
 				}
@@ -68,34 +68,16 @@ namespace Telecom.App
 		// Атомарно сохраняет оформление отдельно от рабочей конфигурации сканирования.
 		internal void Save(string path)
 		{
-			Directory.CreateDirectory(Path.GetDirectoryName(path));
-			string temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-			try
+			AtomicFile.Write(path, temporaryPath =>
 			{
-				using (var writer = XmlWriter.Create(temporaryPath, new XmlWriterSettings { Indent = true }))
+				using (XmlWriter writer = XmlWriter.Create(temporaryPath, new XmlWriterSettings { Indent = true }))
 				{
 					writer.WriteStartElement("appearance");
 					writer.WriteAttributeString("theme", Theme.ToString());
 					writer.WriteAttributeString("fontPercent", FontPercent.ToString(CultureInfo.InvariantCulture));
 					writer.WriteEndElement();
 				}
-
-				if (File.Exists(path))
-				{
-					File.Replace(temporaryPath, path, null);
-				}
-				else
-				{
-					File.Move(temporaryPath, path);
-				}
-			}
-			finally
-			{
-				if (File.Exists(temporaryPath))
-				{
-					File.Delete(temporaryPath);
-				}
-			}
+			});
 		}
 	}
 }

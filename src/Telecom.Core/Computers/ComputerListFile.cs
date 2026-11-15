@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Xml;
 using System.Xml.Linq;
+using Telecom.Core.Common;
 
 namespace Telecom.Core.Computers
 {
@@ -23,11 +23,9 @@ namespace Telecom.Core.Computers
 			XDocument document;
 			try
 			{
-				var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 1024 * 1024 };
-				using (var stream = File.OpenRead(FilePath))
-				using (var reader = XmlReader.Create(stream, settings))
+				using (FileStream stream = File.OpenRead(FilePath))
 				{
-					document = XDocument.Load(reader);
+					document = SafeXml.Load(stream, 1024 * 1024);
 				}
 			}
 			catch (FileNotFoundException)
@@ -108,27 +106,7 @@ namespace Telecom.Core.Computers
 					profile.AdditionalDirectories.Select(path => new XElement("additionalDirectory", path))));
 			}
 
-			Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
-			string temporaryPath = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-			try
-			{
-				new XDocument(root).Save(temporaryPath);
-				if (File.Exists(FilePath))
-				{
-					File.Replace(temporaryPath, FilePath, null);
-				}
-				else
-				{
-					File.Move(temporaryPath, FilePath);
-				}
-			}
-			finally
-			{
-				if (File.Exists(temporaryPath))
-				{
-					File.Delete(temporaryPath);
-				}
-			}
+			AtomicFile.Write(FilePath, temporaryPath => new XDocument(root).Save(temporaryPath));
 		}
 
 		// IPv4 уникальны; несколько старых записей могут ждать заполнения адреса, а подписи могут совпадать.

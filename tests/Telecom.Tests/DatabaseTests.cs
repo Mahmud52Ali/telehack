@@ -101,8 +101,8 @@ namespace Telecom.Tests
 				var ignored = new ComputerProfile(Guid.NewGuid(), ProfileIgnoredIp, "ПК без находок", null, false);
 				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				store.Save(new[] { available, offline, ignored });
-				new ScanConfiguration(new[] { @"C:\Certs" }, new[] { @"C:\CSP\csptest.exe" }, 3, databaseConnectionString)
-					.Save(Path.Combine(workspace.DirectoryPath, "scan.config.xml"));
+				ScanConfigurationFile.Save(new ScanConfiguration(new[] { @"C:\Certs" }, new[] { @"C:\CSP\csptest.exe" }, 3, databaseConnectionString),
+					Path.Combine(workspace.DirectoryPath, "scan.config.xml"));
 
 				var remoteFiles = new LabComputerAccess(workspace.DirectoryPath, ProfileComputerIp);
 				remoteFiles.DeniedPaths.Add(denied);
@@ -394,7 +394,7 @@ SELECT 0;");
 				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.config.xml");
 				var directories = new[] { workspace.DirectoryPath };
 				var executables = new[] { Path.Combine(workspace.DirectoryPath, "csptest.exe") };
-				new ScanConfiguration(directories, executables, 3, string.Empty).Save(configurationPath);
+				ScanConfigurationFile.Save(new ScanConfiguration(directories, executables, 3, string.Empty), configurationPath);
 				using (var form = new MainForm(logger, store, new WindowsFileSystem(), null))
 				{
 					form.ShowInTaskbar = false;
@@ -417,7 +417,7 @@ SELECT 0;");
 					Check.Equal(true, status.Text.Contains("Укажите и сохраните строку подключения"));
 					Check.Equal(0, logger.Errors.Count);
 
-					new ScanConfiguration(directories, executables, 3, databaseConnectionString).Save(configurationPath);
+					ScanConfigurationFile.Save(new ScanConfiguration(directories, executables, 3, databaseConnectionString), configurationPath);
 					refresh.PerformClick();
 					WaitForDatabaseView(refresh);
 					Check.Equal(0, grid.Rows.Count);
