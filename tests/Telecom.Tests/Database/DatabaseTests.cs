@@ -45,7 +45,7 @@ namespace Telecom.Tests
 			}
 
 			AddTest(tests, "БД: отсутствующая таблица создаётся, повторный вызов безопасен", CheckTableCreation);
-			AddTest(tests, "БД: первое внесение, время обновления равно времени внесения", CheckFirstSave);
+			AddTest(tests, "БД: первое внесение, время в UTC и время обновления равно времени внесения", CheckFirstSave);
 			AddTest(tests, "БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave);
 			AddTest(tests, "БД: срок действия и повторный сбор путей без дублей", CheckRepeatedLocations);
 			AddTest(tests, "БД: обе таблицы, подсветка срока и удаление находок", CheckDatabaseView);
@@ -309,6 +309,8 @@ namespace Telecom.Tests
 			Check.Equal("5.0.13003", stored.CryptoProVersion);
 			Check.Equal(true, stored.IsCryptoProLicenseEmbedded);
 			Check.Equal(stored.CreatedAt, stored.UpdatedAt);
+			// Время хранится в UTC независимо от часового пояса сервера; запас — на расхождение часов ПК и сервера.
+			Check.Equal(true, Math.Abs((stored.CreatedAt - DateTime.UtcNow).TotalMinutes) < 5);
 			Check.Equal(false, ReadCertificate("378F0E85").IsCryptoProLicenseEmbedded);
 		}
 
@@ -423,6 +425,9 @@ namespace Telecom.Tests
 					Check.Equal(true, grid.Columns[8] is DataGridViewButtonColumn);
 					DataGridViewRow certificate = FindDatabaseRow(grid, "03A14016");
 					Check.Equal(certificate.Cells[1].Value, certificate.Cells[2].Value);
+					Check.Equal(DateTime.SpecifyKind((DateTime)certificate.Cells[1].Value, DateTimeKind.Utc).ToLocalTime()
+						.ToString("dd.MM.yyyy HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture),
+						certificate.Cells[1].FormattedValue);
 					Check.Equal("Иванов Иван Иванович", certificate.Cells[3].Value);
 					Check.Equal("Тестовый УЦ", certificate.Cells[4].Value);
 					Check.Equal("5.0.13003", certificate.Cells[5].Value);

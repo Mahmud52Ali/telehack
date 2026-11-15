@@ -20,8 +20,9 @@ namespace Telecom.App.Forms.Database
 			GridFactory.ConfigureGrid(grid);
 			grid.AccessibleName = "Сохранённые сертификаты";
 			GridFactory.AddColumn(grid, "SerialNumber", "Серийный номер", 145);
-			GridFactory.AddColumn(grid, "CreatedAt", "Внесён", 155).DefaultCellStyle.Format = TimestampFormat;
-			GridFactory.AddColumn(grid, "UpdatedAt", "Обновлён", 155).DefaultCellStyle.Format = TimestampFormat;
+			GridFactory.AddColumn(grid, "CreatedAt", "Внесён", 155);
+			GridFactory.AddColumn(grid, "UpdatedAt", "Обновлён", 155);
+			grid.CellFormatting += OnSavedAtFormatting;
 			GridFactory.AddColumn(grid, "OwnerName", "Владелец", 165);
 			GridFactory.AddColumn(grid, "CertificationAuthority", "Удостоверяющий центр", 165);
 			GridFactory.AddColumn(grid, "CryptoProVersion", "Версия КриптоПро", 95).DefaultCellStyle.NullValue = "—";
@@ -93,6 +94,18 @@ namespace Telecom.App.Forms.Database
 				: (expired ? Color.DarkRed : Color.SaddleBrown);
 			args.CellStyle.SelectionBackColor = args.CellStyle.BackColor;
 			args.CellStyle.SelectionForeColor = args.CellStyle.ForeColor;
+		}
+
+		// Время внесения и обновления хранится в UTC; показывает его по местному времени с миллисекундами.
+		private static void OnSavedAtFormatting(object sender, DataGridViewCellFormattingEventArgs args)
+		{
+			string field = ((DataGridView)sender).Columns[args.ColumnIndex].DataPropertyName;
+			if ((field == "CreatedAt" || field == "UpdatedAt") && args.Value is DateTime)
+			{
+				args.Value = DateTime.SpecifyKind((DateTime)args.Value, DateTimeKind.Utc).ToLocalTime()
+					.ToString(TimestampFormat, CultureInfo.InvariantCulture);
+				args.FormattingApplied = true;
+			}
 		}
 
 		// Показывает итог проверки наличия и её время в часовом поясе администратора.
