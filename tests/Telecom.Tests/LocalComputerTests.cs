@@ -9,6 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Windows.Forms;
 using Telecom.App;
+using Telecom.App.Windows;
 using Telecom.Core.Access;
 using Telecom.Core.Certificates;
 using Telecom.Core.Computers;
@@ -149,7 +150,7 @@ namespace Telecom.Tests
 		// Сверяет локальное чтение на Windows с системным API, не устанавливая и не удаляя сертификаты.
 		private static void CheckLocalMachineStore()
 		{
-			Type storeType = typeof(MainForm).Assembly.GetType("Telecom.App.WindowsMachineCertificateStore");
+			Type storeType = typeof(MainForm).Assembly.GetType("Telecom.App.Windows.WindowsMachineCertificateStore");
 			var reader = (IMachineCertificateStore)Activator.CreateInstance(storeType, true);
 			var profile = ComputerProfile.CreateLocal(true);
 			var actual = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

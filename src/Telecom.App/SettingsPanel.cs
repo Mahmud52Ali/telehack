@@ -399,8 +399,8 @@ namespace Telecom.App
 			var restore = new Button { Text = "Восстановить настройки первого запуска…", AutoSize = true };
 			restore.Click += OnRestore;
 			layout.Controls.Add(CreateActions(import, saveCopy, restore), 0, 1);
-			layout.Controls.Add(CreateFileRow("Журнал работы", Program.LogFilePath, "Открыть", "Файл журнала отсутствует."), 0, 2);
-			layout.Controls.Add(CreateFileRow("Журнал ошибок", Program.ErrorLogFilePath, "Открыть", "Файл появится после первой записанной ошибки."), 0, 3);
+			layout.Controls.Add(CreateFileRow("Журнал работы", AppPaths.LogFilePath, "Открыть", "Файл журнала отсутствует."), 0, 2);
+			layout.Controls.Add(CreateFileRow("Журнал ошибок", AppPaths.ErrorLogFilePath, "Открыть", "Файл появится после первой записанной ошибки."), 0, 3);
 			return layout;
 		}
 

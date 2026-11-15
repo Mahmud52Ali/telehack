@@ -14,7 +14,7 @@ using Telecom.Core.Access;
 using Telecom.Core.Computers;
 using Telecom.Core.Scanning;
 
-namespace Telecom.App
+namespace Telecom.App.Windows
 {
 	internal sealed class WindowsMachineCertificateStore : IMachineCertificateStore
 	{
@@ -78,7 +78,7 @@ namespace Telecom.App
 			}
 			finally
 			{
-				CloseHandle(token);
+				NativeMethods.CloseHandle(token);
 			}
 		}
 
@@ -100,7 +100,7 @@ namespace Telecom.App
 				try
 				{
 					IntPtr token;
-					if (!LogonUser(userName, domain, passwordBuffer, NewCredentialsLogon, NegotiateLogonProvider, out token))
+					if (!NativeMethods.LogonUser(userName, domain, passwordBuffer, NewCredentialsLogon, NegotiateLogonProvider, out token))
 					{
 						int error = Marshal.GetLastWin32Error();
 						throw new Win32Exception(error, "Не удалось использовать сохранённую учётную запись. " + new Win32Exception(error).Message);
@@ -120,7 +120,7 @@ namespace Telecom.App
 			Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
 		{
 			SafeRegistryHandle remoteBase;
-			int error = RegConnectRegistry(@"\\" + ComputerProfile.NormalizeIpAddress(computer),
+			int error = NativeMethods.RegConnectRegistry(@"\\" + ComputerProfile.NormalizeIpAddress(computer),
 				new IntPtr((int)RegistryHive.LocalMachine), out remoteBase);
 			using (remoteBase)
 			{
@@ -139,7 +139,7 @@ namespace Telecom.App
 			Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
 		{
 			SafeRegistryHandle storeHandle;
-			int error = RegOpenKeyEx(baseHandle, PersonalStoreKey, 0, (int)RegistryRights.ReadKey, out storeHandle);
+			int error = NativeMethods.RegOpenKeyEx(baseHandle, PersonalStoreKey, 0, (int)RegistryRights.ReadKey, out storeHandle);
 			using (storeHandle)
 			{
 				if (error == FileNotFound || error == PathNotFound)
@@ -197,7 +197,7 @@ namespace Telecom.App
 			}
 
 			SafeRegistryHandle entryHandle;
-			int error = RegOpenKeyEx(storeHandle, entry, 0, (int)RegistryRights.ReadKey, out entryHandle);
+			int error = NativeMethods.RegOpenKeyEx(storeHandle, entry, 0, (int)RegistryRights.ReadKey, out entryHandle);
 			using (entryHandle)
 			{
 				if (error == FileNotFound || error == PathNotFound)
@@ -217,7 +217,7 @@ namespace Telecom.App
 		private static byte[] ReadBlob(SafeRegistryHandle storeHandle, string entry)
 		{
 			int size = 0;
-			int error = RegGetValue(storeHandle, entry, "Blob", RegistryBinaryValue, IntPtr.Zero, null, ref size);
+			int error = NativeMethods.RegGetValue(storeHandle, entry, "Blob", RegistryBinaryValue, IntPtr.Zero, null, ref size);
 			if (error == FileNotFound || error == PathNotFound || error == UnsupportedType)
 			{
 				throw new InvalidDataException("В записи хранилища отсутствует двоичное значение Blob.");
@@ -232,7 +232,7 @@ namespace Telecom.App
 			}
 
 			var contents = new byte[size];
-			error = RegGetValue(storeHandle, entry, "Blob", RegistryBinaryValue, IntPtr.Zero, contents, ref size);
+			error = NativeMethods.RegGetValue(storeHandle, entry, "Blob", RegistryBinaryValue, IntPtr.Zero, contents, ref size);
 			if (error != 0)
 			{
 				throw new Win32Exception(error);
@@ -246,22 +246,5 @@ namespace Telecom.App
 			return contents;
 		}
 
-		[DllImport("advapi32.dll", EntryPoint = "LogonUserW", CharSet = CharSet.Unicode, SetLastError = true)]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		private static extern bool LogonUser(string userName, string domain, IntPtr password, int logonType, int provider, out IntPtr token);
-
-		[DllImport("kernel32.dll")]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		private static extern bool CloseHandle(IntPtr handle);
-
-		[DllImport("advapi32.dll", EntryPoint = "RegConnectRegistryW", CharSet = CharSet.Unicode)]
-		private static extern int RegConnectRegistry(string computer, IntPtr key, out SafeRegistryHandle result);
-
-		[DllImport("advapi32.dll", EntryPoint = "RegOpenKeyExW", CharSet = CharSet.Unicode)]
-		private static extern int RegOpenKeyEx(SafeRegistryHandle key, string subKey, int options, int access, out SafeRegistryHandle result);
-
-		[DllImport("advapi32.dll", EntryPoint = "RegGetValueW", CharSet = CharSet.Unicode)]
-		private static extern int RegGetValue(SafeRegistryHandle key, string subKey, string value, int flags,
-			IntPtr valueType, [Out] byte[] data, ref int size);
 	}
 }

@@ -6,7 +6,7 @@ using System.Threading;
 using Telecom.Core.Access;
 using Telecom.Core.Computers;
 
-namespace Telecom.App
+namespace Telecom.App.Windows
 {
 	public sealed class WindowsSmbConnection : IComputerConnector
 	{
@@ -59,24 +59,9 @@ namespace Telecom.App
 		// CONNECT_TEMPORARY и отсутствие буквы диска оставляют восстановление сеансов самому приложению.
 		private static int ConnectResource(string remotePath, string userName, string password)
 		{
-			var resource = new NetworkResource { RemoteName = remotePath };
-			return WNetAddConnection2(ref resource, password, userName, 4);
+			var resource = new NativeMethods.NetworkResource { RemoteName = remotePath };
+			return NativeMethods.WNetAddConnection2(ref resource, password, userName, 4);
 		}
 
-		[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-		private struct NetworkResource
-		{
-			public int Scope;
-			public int Type;
-			public int DisplayType;
-			public int Usage;
-			public string LocalName;
-			public string RemoteName;
-			public string Comment;
-			public string Provider;
-		}
-
-		[DllImport("mpr.dll", EntryPoint = "WNetAddConnection2W", CharSet = CharSet.Unicode)]
-		private static extern int WNetAddConnection2(ref NetworkResource resource, string password, string userName, int flags);
 	}
 }

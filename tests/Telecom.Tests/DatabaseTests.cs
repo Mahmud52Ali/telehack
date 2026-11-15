@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Telecom.App;
+using Telecom.App.Windows;
 using Telecom.Core.Certificates;
 using Telecom.Core.Computers;
 using Telecom.Core.Configuration;

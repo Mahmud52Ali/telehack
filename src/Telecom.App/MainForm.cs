@@ -11,6 +11,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Telecom.App.Windows;
 using Telecom.Core.Access;
 using Telecom.Core.Certificates;
 using Telecom.Core.Computers;
@@ -72,7 +73,7 @@ namespace Telecom.App
 
 		// Создаёт список ПК; подключение сохранённых компьютеров начинается после появления окна.
 		public MainForm(ILogger logger)
-			: this(logger, new ComputerListFile(Path.Combine(Program.DataDirectory, "configs", "computers.xml")),
+			: this(logger, new ComputerListFile(AppPaths.ComputerListPath),
 				new WindowsFileSystem(), null, new WindowsMachineCertificateStore())
 		{
 		}
@@ -818,7 +819,7 @@ namespace Telecom.App
 			}
 			catch (Exception exception)
 			{
-				Program.ShowError("Не удалось загрузить список ПК: " + computerListFile.FilePath, exception);
+				ErrorReporter.Show("Не удалось загрузить список ПК: " + computerListFile.FilePath, exception);
 				statusLabel.Text = "Исправьте файл списка ПК: " + computerListFile.FilePath;
 			}
 			finally
@@ -850,7 +851,7 @@ namespace Telecom.App
 			}
 			catch (Exception exception)
 			{
-				Program.ShowError("Не удалось подготовить конфигурацию сканирования: " + configurationFilePath, exception);
+				ErrorReporter.Show("Не удалось подготовить конфигурацию сканирования: " + configurationFilePath, exception);
 				statusLabel.Text = "Откройте «Настройки → Файлы и журнал», чтобы загрузить или восстановить конфигурацию.";
 				return false;
 			}
@@ -886,7 +887,7 @@ namespace Telecom.App
 				item.Selected = item.SavedSelection;
 				computers.ResetBindings();
 				changingSelection = false;
-				Program.ShowError("Не удалось сохранить выбор компьютеров.", exception);
+				ErrorReporter.Show("Не удалось сохранить выбор компьютеров.", exception);
 			}
 
 			UpdateComputerActions();
@@ -932,7 +933,7 @@ namespace Telecom.App
 			catch (Exception exception)
 			{
 				changingSelection = false;
-				Program.ShowError("Не удалось удалить компьютер или его сохранённую учётку.", exception);
+				ErrorReporter.Show("Не удалось удалить компьютер или его сохранённую учётку.", exception);
 			}
 		}
 
@@ -998,7 +999,7 @@ namespace Telecom.App
 						RemoveCredential(profile);
 					}
 
-					Program.ShowError("Не удалось сохранить компьютер.", exception);
+					ErrorReporter.Show("Не удалось сохранить компьютер.", exception);
 					return false;
 				}
 				finally
@@ -1020,7 +1021,7 @@ namespace Telecom.App
 				}
 				catch (Exception exception)
 				{
-					Program.ShowError("Список ПК сохранён, но прежнюю запись Telecom/Computer/" + profile.Id.ToString("N")
+					ErrorReporter.Show("Список ПК сохранён, но прежнюю запись Telecom/Computer/" + profile.Id.ToString("N")
 						+ " для " + profile.DisplayName + " (" + profile.IpAddress + ") нужно удалить из диспетчера учётных данных вручную.", exception);
 				}
 			}
@@ -1136,8 +1137,8 @@ namespace Telecom.App
 			}
 			catch (Exception exception)
 			{
-				Program.ShowError("Не удалось обработать выбранные компьютеры.", exception);
-				statusLabel.Text = "Ошибка. Подробности в " + Program.ErrorLogFilePath + ".";
+				ErrorReporter.Show("Не удалось обработать выбранные компьютеры.", exception);
+				statusLabel.Text = "Ошибка. Подробности в " + AppPaths.ErrorLogFilePath + ".";
 			}
 			finally
 			{

@@ -2,10 +2,9 @@ using System;
 using System.ComponentModel;
 using System.Net;
 using System.Runtime.InteropServices;
-using FileTime = System.Runtime.InteropServices.ComTypes.FILETIME;
 using Telecom.Core.Computers;
 
-namespace Telecom.App
+namespace Telecom.App.Windows
 {
 	public sealed class WindowsCredentialStore
 	{
@@ -24,12 +23,12 @@ namespace Telecom.App
 			IntPtr secret = Marshal.StringToCoTaskMemUni(password);
 			try
 			{
-				var credential = new NativeCredential
+				var credential = new NativeMethods.NativeCredential
 				{
 					Type = GenericCredential, TargetName = Target(id), UserName = userName,
 					CredentialBlob = secret, CredentialBlobSize = checked(password.Length * 2), Persist = PersistOnLocalComputer
 				};
-				if (!CredWrite(ref credential, 0))
+				if (!NativeMethods.CredWrite(ref credential, 0))
 				{
 					throw CredentialError(Marshal.GetLastWin32Error(), "Не удалось сохранить учётные данные Windows.");
 				}
@@ -44,7 +43,7 @@ namespace Telecom.App
 		public NetworkCredential Read(Guid id)
 		{
 			IntPtr pointer;
-			if (!CredRead(Target(id), GenericCredential, 0, out pointer))
+			if (!NativeMethods.CredRead(Target(id), GenericCredential, 0, out pointer))
 			{
 				int code = Marshal.GetLastWin32Error();
 				throw CredentialError(code, code == NotFound
@@ -54,7 +53,7 @@ namespace Telecom.App
 
 			try
 			{
-				var credential = (NativeCredential)Marshal.PtrToStructure(pointer, typeof(NativeCredential));
+				var credential = (NativeMethods.NativeCredential)Marshal.PtrToStructure(pointer, typeof(NativeMethods.NativeCredential));
 				if (credential.CredentialBlobSize < 0 || credential.CredentialBlobSize % 2 != 0)
 				{
 					throw new InvalidOperationException("Некорректная сохранённая запись учётных данных.");
@@ -66,7 +65,7 @@ namespace Telecom.App
 			}
 			finally
 			{
-				CredFree(pointer);
+				NativeMethods.CredFree(pointer);
 			}
 		}
 
@@ -85,7 +84,7 @@ namespace Telecom.App
 		// Удаляет только запись с идентификатором удалённого или изменённого профиля.
 		public void Delete(Guid id)
 		{
-			if (!CredDelete(Target(id), GenericCredential, 0))
+			if (!NativeMethods.CredDelete(Target(id), GenericCredential, 0))
 			{
 				int code = Marshal.GetLastWin32Error();
 				if (code != NotFound)
@@ -112,36 +111,5 @@ namespace Telecom.App
 			return "Telecom/Computer/" + id.ToString("N");
 		}
 
-		[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-		private struct NativeCredential
-		{
-			public int Flags;
-			public int Type;
-			public string TargetName;
-			public string Comment;
-			public FileTime LastWritten;
-			public int CredentialBlobSize;
-			public IntPtr CredentialBlob;
-			public int Persist;
-			public int AttributeCount;
-			public IntPtr Attributes;
-			public string TargetAlias;
-			public string UserName;
-		}
-
-		[DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		private static extern bool CredWrite(ref NativeCredential credential, int flags);
-
-		[DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		private static extern bool CredRead(string target, int type, int flags, out IntPtr credential);
-
-		[DllImport("advapi32.dll", EntryPoint = "CredDeleteW", CharSet = CharSet.Unicode, SetLastError = true)]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		private static extern bool CredDelete(string target, int type, int flags);
-
-		[DllImport("advapi32.dll")]
-		private static extern void CredFree(IntPtr credential);
 	}
 }

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using Telecom.App;
+using Telecom.App.Windows;
 using Telecom.Core.Certificates;
 using Telecom.Core.Logging;
 using Telecom.Core.Scanning;

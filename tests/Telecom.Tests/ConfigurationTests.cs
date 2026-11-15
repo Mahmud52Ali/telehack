@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Windows.Forms;
 using System.Xml;
 using Telecom.App;
+using Telecom.App.Windows;
 using Telecom.Core.Common;
 using Telecom.Core.Computers;
 using Telecom.Core.Configuration;
@@ -48,7 +49,7 @@ namespace Telecom.Tests
 				File.WriteAllText(Path.Combine(solutionDirectory, "Telecom.sln"), string.Empty);
 				string releaseDirectory = Path.Combine(workspace.DirectoryPath, "release");
 				Directory.CreateDirectory(releaseDirectory);
-				Type application = typeof(MainForm).Assembly.GetType("Telecom.App.Program", true);
+				Type application = typeof(MainForm).Assembly.GetType("Telecom.App.AppPaths", true);
 				MethodInfo find = application.GetMethod("FindDataDirectory", BindingFlags.Static | BindingFlags.NonPublic);
 				Check.Equal(solutionDirectory, (string)find.Invoke(null, new object[] { buildDirectory }));
 				Check.Equal(releaseDirectory, (string)find.Invoke(null, new object[] { releaseDirectory }));

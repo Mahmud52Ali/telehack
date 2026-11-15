@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Versioning;
-using Telecom.App;
+using Telecom.App.Windows;
 using Telecom.Core.Certificates;
 
 namespace Telecom.Tests

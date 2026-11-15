@@ -13,6 +13,7 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Xml;
 using Telecom.App;
+using Telecom.App.Windows;
 using Telecom.Core.Access;
 using Telecom.Core.Certificates;
 using Telecom.Core.Common;
