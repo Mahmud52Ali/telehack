@@ -9,7 +9,11 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Windows.Forms;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Access;
+using Telecom.Core.Certificates;
+using Telecom.Core.Computers;
+using Telecom.Core.Configuration;
+using Telecom.Core.Scanning;
 
 namespace Telecom.Tests
 {
@@ -30,7 +34,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				var remote = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Удалённый ПК", @"LAB-PC\reader", false,
 					new[] { @"D:\RemoteCerts" });
 				var local = ComputerProfile.CreateLocal(true, new[] { @" d:/LocalCerts/ ", @"D:\localcerts", @"C:\Users\*\Certs" });
@@ -198,7 +202,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				string common = Path.Combine(workspace.DirectoryPath, "common");
 				string extra = Path.Combine(workspace.DirectoryPath, "extra");
 				string cryptoPath = Path.Combine(workspace.DirectoryPath, "CSP", "csptest.exe");

@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Telecom.Core.Computers;
 
-namespace Telecom.Core
+namespace Telecom.Core.Access
 {
 	public interface IMachineCertificateStore
 	{

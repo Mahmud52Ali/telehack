@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using Telecom.Core.Access;
+using Telecom.Core.Logging;
 
-namespace Telecom.Core
+namespace Telecom.Core.Scanning
 {
 	public sealed class DirectoryPatternExpander
 	{
@@ -88,12 +90,12 @@ namespace Telecom.Core
 					}
 					catch (Exception exception)
 					{
-						if (!ScanFailure.IsRecoverable(exception))
+						if (!ErrorClassifier.IsRecoverable(exception))
 						{
 							throw;
 						}
 
-						if (ScanFailure.Classify(exception) == ScanErrorKind.NotFound)
+						if (ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
 						{
 							logger.Info("У профиля нет настроенной папки: " + child + suffix + Environment.NewLine + exception);
 						}
@@ -106,12 +108,12 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception))
+				if (!ErrorClassifier.IsRecoverable(exception))
 				{
 					throw;
 				}
 
-				if (expandedProfile && ScanFailure.Classify(exception) == ScanErrorKind.NotFound)
+				if (expandedProfile && ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
 				{
 					logger.Info("У профиля нет настроенной ветки: " + pattern + Environment.NewLine + exception);
 				}
@@ -163,7 +165,7 @@ namespace Telecom.Core
 		// Делает непроверенные ветки видимыми в результате и сохраняет полную диагностику.
 		private void RecordError(string path, Exception exception, IList<ScanError> errors)
 		{
-			errors.Add(new ScanError(path, exception.Message, ScanFailure.Classify(exception)));
+			errors.Add(new ScanError(path, exception.Message, ErrorClassifier.Classify(exception)));
 			logger.Error("Не удалось раскрыть путь: " + path, exception);
 		}
 	}

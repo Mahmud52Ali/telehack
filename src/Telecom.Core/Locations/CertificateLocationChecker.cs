@@ -3,39 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using Telecom.Core.Access;
+using Telecom.Core.Certificates;
+using Telecom.Core.Common;
+using Telecom.Core.Computers;
+using Telecom.Core.Logging;
+using Telecom.Core.Scanning;
 
-namespace Telecom.Core
+namespace Telecom.Core.Locations
 {
-	public enum CertificateLocationStatus : byte
-	{
-		Found = 1,
-		Missing,
-		DifferentCertificate,
-		Unverified
-	}
-
-	public sealed class CertificateLocationCheck
-	{
-		public string SerialNumber { get; private set; }
-		public string ComputerAddress { get; private set; }
-		public string SourcePath { get; private set; }
-		public DateTime CertificateCreatedAt { get; private set; }
-		public DateTime CertificateUpdatedAt { get; private set; }
-		public CertificateLocationStatus Status { get; internal set; }
-		public DateTime CheckedAtUtc { get; internal set; }
-
-		// Сохраняет ключ находки и версию строки на момент запуска проверки.
-		public CertificateLocationCheck(string serialNumber, string computerAddress, string sourcePath,
-			DateTime certificateCreatedAt, DateTime certificateUpdatedAt)
-		{
-			SerialNumber = serialNumber;
-			ComputerAddress = computerAddress;
-			SourcePath = sourcePath;
-			CertificateCreatedAt = certificateCreatedAt;
-			CertificateUpdatedAt = certificateUpdatedAt;
-		}
-	}
-
 	public sealed class CertificateLocationChecker
 	{
 		private readonly ICertificateFileSystem fileSystem;
@@ -104,7 +80,7 @@ namespace Telecom.Core
 				}
 				catch (Exception exception)
 				{
-					if (!ScanFailure.IsRecoverable(exception) && !(exception is InvalidOperationException))
+					if (!ErrorClassifier.IsRecoverable(exception) && !(exception is InvalidOperationException))
 					{
 						throw;
 					}
@@ -129,12 +105,12 @@ namespace Telecom.Core
 				}
 				catch (Exception exception)
 				{
-					if (!ScanFailure.IsRecoverable(exception) && !(exception is ArgumentException))
+					if (!ErrorClassifier.IsRecoverable(exception) && !(exception is ArgumentException))
 					{
 						throw;
 					}
 
-					if (ScanFailure.Classify(exception) == ScanErrorKind.NotFound)
+					if (ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
 					{
 						logger.Info("При проверке наличия путь отсутствует: " + file.Key);
 						RecordResult(file, CertificateLocationStatus.Missing);
@@ -195,7 +171,7 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception) && !(exception is InvalidOperationException))
+				if (!ErrorClassifier.IsRecoverable(exception) && !(exception is InvalidOperationException))
 				{
 					throw;
 				}
@@ -221,7 +197,7 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception))
+				if (!ErrorClassifier.IsRecoverable(exception))
 				{
 					throw;
 				}

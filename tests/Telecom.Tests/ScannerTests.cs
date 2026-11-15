@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Certificates;
+using Telecom.Core.Logging;
+using Telecom.Core.Scanning;
 
 namespace Telecom.Tests
 {

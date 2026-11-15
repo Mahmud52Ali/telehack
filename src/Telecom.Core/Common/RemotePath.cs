@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
-namespace Telecom.Core
+namespace Telecom.Core.Common
 {
 	public static class RemotePath
 	{

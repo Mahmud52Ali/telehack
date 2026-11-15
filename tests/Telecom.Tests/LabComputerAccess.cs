@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Access;
 
 namespace Telecom.Tests
 {

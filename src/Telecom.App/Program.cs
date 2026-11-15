@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.VisualBasic.ApplicationServices;
-using Telecom.Core;
+using Telecom.Core.Logging;
 
 namespace Telecom.App
 {

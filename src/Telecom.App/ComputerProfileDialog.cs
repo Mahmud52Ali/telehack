@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using Telecom.Core;
+using Telecom.Core.Computers;
 
 namespace Telecom.App
 {

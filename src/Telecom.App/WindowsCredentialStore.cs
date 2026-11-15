@@ -2,8 +2,8 @@ using System;
 using System.ComponentModel;
 using System.Net;
 using System.Runtime.InteropServices;
-using Telecom.Core;
 using FileTime = System.Runtime.InteropServices.ComTypes.FILETIME;
+using Telecom.Core.Computers;
 
 namespace Telecom.App
 {

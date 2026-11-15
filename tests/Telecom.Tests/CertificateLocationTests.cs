@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using Telecom.Core;
+using Telecom.Core.Access;
+using Telecom.Core.Computers;
+using Telecom.Core.Locations;
 
 namespace Telecom.Tests
 {

@@ -1,6 +1,6 @@
 using System;
 
-namespace Telecom.Core
+namespace Telecom.Core.Logging
 {
 	public interface ILogger
 	{

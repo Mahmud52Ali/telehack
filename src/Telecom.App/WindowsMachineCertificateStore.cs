@@ -10,7 +10,9 @@ using System.Security.Principal;
 using System.Threading;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
-using Telecom.Core;
+using Telecom.Core.Access;
+using Telecom.Core.Computers;
+using Telecom.Core.Scanning;
 
 namespace Telecom.App
 {
@@ -171,7 +173,7 @@ namespace Telecom.App
 						}
 						catch (Exception exception)
 						{
-							if (!ScanFailure.IsRecoverable(exception))
+							if (!ErrorClassifier.IsRecoverable(exception))
 							{
 								throw;
 							}

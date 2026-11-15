@@ -1,6 +1,7 @@
 using System.Collections.Generic;
+using Telecom.Core.Certificates;
 
-namespace Telecom.Core
+namespace Telecom.Core.Scanning
 {
 	public enum ComputerScanStatus
 	{

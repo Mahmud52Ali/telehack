@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
-using Telecom.Core;
+using Telecom.Core.Certificates;
+using Telecom.Core.Common;
+using Telecom.Core.Computers;
+using Telecom.Core.Configuration;
+using Telecom.Core.Scanning;
 
 namespace Telecom.Tests
 {
@@ -347,11 +351,11 @@ namespace Telecom.Tests
 		// Проверяет реальные числовые коды вместо хрупкого поиска слов в русских или английских сообщениях.
 		private static void CheckNetworkErrorClassification()
 		{
-			Check.Equal(ScanErrorKind.AccessDenied, ScanFailure.Classify(new IOException("anything", unchecked((int)0x8007052E))));
-			Check.Equal(ScanErrorKind.AccessDenied, ScanFailure.Classify(new IOException("anything", unchecked((int)0x800704C3))));
-			Check.Equal(ScanErrorKind.Unavailable, ScanFailure.Classify(new IOException("anything", unchecked((int)0x80070043))));
-			Check.Equal(ScanErrorKind.NotFound, ScanFailure.Classify(new DirectoryNotFoundException("anything")));
-			Check.Equal(ScanErrorKind.InvalidData, ScanFailure.Classify(new InvalidDataException("anything")));
+			Check.Equal(ScanErrorKind.AccessDenied, ErrorClassifier.Classify(new IOException("anything", unchecked((int)0x8007052E))));
+			Check.Equal(ScanErrorKind.AccessDenied, ErrorClassifier.Classify(new IOException("anything", unchecked((int)0x800704C3))));
+			Check.Equal(ScanErrorKind.Unavailable, ErrorClassifier.Classify(new IOException("anything", unchecked((int)0x80070043))));
+			Check.Equal(ScanErrorKind.NotFound, ErrorClassifier.Classify(new DirectoryNotFoundException("anything")));
+			Check.Equal(ScanErrorKind.InvalidData, ErrorClassifier.Classify(new InvalidDataException("anything")));
 		}
 
 		// Проверяет, что ошибка кода поднимается вызывающему обработчику и не объявляется обычным отказом сети.

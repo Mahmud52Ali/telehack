@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Access;
+using Telecom.Core.Logging;
 
 namespace Telecom.Tests
 {

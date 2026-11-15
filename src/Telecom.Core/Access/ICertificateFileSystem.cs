@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Telecom.Core
+namespace Telecom.Core.Access
 {
 	public interface ICertificateFileSystem
 	{

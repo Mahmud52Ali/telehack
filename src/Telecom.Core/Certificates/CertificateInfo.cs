@@ -1,6 +1,6 @@
 using System;
 
-namespace Telecom.Core
+namespace Telecom.Core.Certificates
 {
 	public sealed class CertificateInfo
 	{

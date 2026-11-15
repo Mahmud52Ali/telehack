@@ -9,8 +9,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Telecom.Core;
 using Microsoft.Win32.SafeHandles;
+using Telecom.Core.Access;
+using Telecom.Core.Common;
 
 namespace Telecom.App
 {

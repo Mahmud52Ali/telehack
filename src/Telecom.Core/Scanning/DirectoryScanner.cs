@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using Telecom.Core.Access;
+using Telecom.Core.Certificates;
+using Telecom.Core.Logging;
 
-namespace Telecom.Core
+namespace Telecom.Core.Scanning
 {
 	public sealed class DirectoryScanner
 	{
@@ -65,7 +68,7 @@ namespace Telecom.Core
 					}
 					catch (Exception exception)
 					{
-						if (!ScanFailure.IsRecoverable(exception))
+						if (!ErrorClassifier.IsRecoverable(exception))
 						{
 							throw;
 						}
@@ -108,7 +111,7 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception))
+				if (!ErrorClassifier.IsRecoverable(exception))
 				{
 					throw;
 				}
@@ -120,7 +123,7 @@ namespace Telecom.Core
 		// Добавляет ошибку в результат и записывает диагностические сведения в файл журнала.
 		private void RecordError(string path, Exception exception, DirectoryScanResult result)
 		{
-			result.Errors.Add(new ScanError(path, exception.Message, ScanFailure.Classify(exception)));
+			result.Errors.Add(new ScanError(path, exception.Message, ErrorClassifier.Classify(exception)));
 			logger.Error("Ошибка чтения: " + path, exception);
 		}
 	}

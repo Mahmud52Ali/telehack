@@ -6,7 +6,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using Telecom.Core;
+using Telecom.Core.Configuration;
+using Telecom.Core.Database;
+using Telecom.Core.Logging;
 
 namespace Telecom.App
 {

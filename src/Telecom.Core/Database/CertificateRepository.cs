@@ -3,15 +3,12 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
+using Telecom.Core.Certificates;
+using Telecom.Core.Locations;
+using Telecom.Core.Logging;
 
-namespace Telecom.Core
+namespace Telecom.Core.Database
 {
-	public sealed class CertificateSaveResult
-	{
-		public int Inserted { get; internal set; }
-		public int Updated { get; internal set; }
-	}
-
 	public sealed class CertificateRepository
 	{
 		private const int CreateDatabaseDeniedErrorNumber = 262;

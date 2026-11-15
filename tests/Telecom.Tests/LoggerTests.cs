@@ -10,7 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Computers;
+using Telecom.Core.Logging;
 
 namespace Telecom.Tests
 {
@@ -37,7 +38,7 @@ namespace Telecom.Tests
 				{
 					var logger = new MemoryLogger();
 					using (var form = new MainForm(logger,
-						new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml")), new WindowsFileSystem(), null))
+						new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml")), new WindowsFileSystem(), null))
 					{
 						Control panel = FormField<Control>(form, "settingsPanel");
 						panel.CreateControl();

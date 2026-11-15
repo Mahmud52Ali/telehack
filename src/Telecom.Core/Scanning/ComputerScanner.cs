@@ -3,8 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Telecom.Core.Access;
+using Telecom.Core.Certificates;
+using Telecom.Core.Common;
+using Telecom.Core.Computers;
+using Telecom.Core.Configuration;
+using Telecom.Core.Logging;
 
-namespace Telecom.Core
+namespace Telecom.Core.Scanning
 {
 	public sealed class ComputerScanner
 	{
@@ -112,7 +118,7 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception))
+				if (!ErrorClassifier.IsRecoverable(exception))
 				{
 					throw;
 				}
@@ -141,13 +147,13 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception))
+				if (!ErrorClassifier.IsRecoverable(exception))
 				{
 					throw;
 				}
 
 				const string message = "Не удалось прочитать хранилище «Личное» компьютера.";
-				result.Errors.Add(new ScanError(source, message + " " + exception.Message, ScanFailure.Classify(exception)));
+				result.Errors.Add(new ScanError(source, message + " " + exception.Message, ErrorClassifier.Classify(exception)));
 				logger.Error(message + " " + source, exception);
 				return false;
 			}
@@ -168,7 +174,7 @@ namespace Telecom.Core
 			}
 			catch (Exception exception)
 			{
-				if (!ScanFailure.IsRecoverable(exception))
+				if (!ErrorClassifier.IsRecoverable(exception))
 				{
 					throw;
 				}
@@ -196,12 +202,12 @@ namespace Telecom.Core
 				}
 				catch (Exception exception)
 				{
-					if (!ScanFailure.IsRecoverable(exception))
+					if (!ErrorClassifier.IsRecoverable(exception))
 					{
 						throw;
 					}
 
-					if (ScanFailure.Classify(exception) == ScanErrorKind.NotFound)
+					if (ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
 					{
 						logger.Info("Не найден файл проверки КриптоПро: " + remotePath + Environment.NewLine + exception);
 					}
@@ -259,7 +265,7 @@ namespace Telecom.Core
 		// Записывает ошибку с контекстом ПК или ресурса в результат и журнал.
 		private void RecordError(string path, Exception exception, ComputerScanResult result)
 		{
-			result.Errors.Add(new ScanError(path, exception.Message, ScanFailure.Classify(exception)));
+			result.Errors.Add(new ScanError(path, exception.Message, ErrorClassifier.Classify(exception)));
 			logger.Error("Ошибка проверки компьютера или ресурса: " + path, exception);
 		}
 	}

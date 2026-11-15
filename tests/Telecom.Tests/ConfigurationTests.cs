@@ -7,7 +7,9 @@ using System.Reflection;
 using System.Windows.Forms;
 using System.Xml;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Common;
+using Telecom.Core.Computers;
+using Telecom.Core.Configuration;
 
 namespace Telecom.Tests
 {
@@ -192,7 +194,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			using (var form = new MainForm(new MemoryLogger(),
-				new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml")), new WindowsFileSystem(), null))
+				new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml")), new WindowsFileSystem(), null))
 			{
 				form.ShowInTaskbar = false;
 				form.StartPosition = FormStartPosition.Manual;
@@ -258,7 +260,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				string appearancePath = Path.Combine(workspace.DirectoryPath, "appearance.xml");
 				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.config.xml");
 				using (var form = new MainForm(new MemoryLogger(), store, new WindowsFileSystem(), null))

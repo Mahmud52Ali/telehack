@@ -5,14 +5,14 @@ using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
 
-namespace Telecom.Core
+namespace Telecom.Core.Computers
 {
-	public sealed class ComputerProfileStore
+	public sealed class ComputerListFile
 	{
 		public string FilePath { get; private set; }
 
 		// Запоминает полный путь к файлу списка ПК.
-		public ComputerProfileStore(string filePath)
+		public ComputerListFile(string filePath)
 		{
 			FilePath = Path.GetFullPath(filePath);
 		}

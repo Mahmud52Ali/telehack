@@ -11,7 +11,14 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Telecom.Core;
+using Telecom.Core.Access;
+using Telecom.Core.Certificates;
+using Telecom.Core.Computers;
+using Telecom.Core.Configuration;
+using Telecom.Core.Database;
+using Telecom.Core.Locations;
+using Telecom.Core.Logging;
+using Telecom.Core.Scanning;
 
 namespace Telecom.App
 {
@@ -23,7 +30,7 @@ namespace Telecom.App
 		private readonly ILogger logger;
 		private readonly DataGridView computersGrid = new DataGridView();
 		private readonly BindingList<ComputerListItem> computers = new BindingList<ComputerListItem>();
-		private readonly ComputerProfileStore profileStore;
+		private readonly ComputerListFile computerListFile;
 		private readonly string configurationFilePath;
 		private readonly string configurationTemplatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml");
 		private readonly WindowsCredentialStore credentialStore = new WindowsCredentialStore();
@@ -65,18 +72,18 @@ namespace Telecom.App
 
 		// Создаёт список ПК; подключение сохранённых компьютеров начинается после появления окна.
 		public MainForm(ILogger logger)
-			: this(logger, new ComputerProfileStore(Path.Combine(Program.DataDirectory, "configs", "computers.xml")),
+			: this(logger, new ComputerListFile(Path.Combine(Program.DataDirectory, "configs", "computers.xml")),
 				new WindowsFileSystem(), null, new WindowsMachineCertificateStore())
 		{
 		}
 
 		// Принимает хранилище и сетевые адаптеры для проверки полного сценария без настоящих ПК и паролей.
-		public MainForm(ILogger logger, ComputerProfileStore profileStore, IComputerAccess computerAccess, WindowsSmbConnection connection,
+		public MainForm(ILogger logger, ComputerListFile computerListFile, IComputerAccess computerAccess, WindowsSmbConnection connection,
 			IMachineCertificateStore machineCertificateStore = null)
 		{
 			this.logger = logger;
-			this.profileStore = profileStore;
-			configurationFilePath = Path.Combine(Path.GetDirectoryName(profileStore.FilePath), "scan.config.xml");
+			this.computerListFile = computerListFile;
+			configurationFilePath = Path.Combine(Path.GetDirectoryName(computerListFile.FilePath), "scan.config.xml");
 			this.computerAccess = computerAccess;
 			this.connection = connection ?? new WindowsSmbConnection(credentialStore);
 			this.machineCertificateStore = machineCertificateStore;
@@ -794,7 +801,7 @@ namespace Telecom.App
 			try
 			{
 				changingSelection = true;
-				foreach (ComputerProfile profile in profileStore.Load())
+				foreach (ComputerProfile profile in computerListFile.Load())
 				{
 					if (profile.IsLocal)
 					{
@@ -810,8 +817,8 @@ namespace Telecom.App
 			}
 			catch (Exception exception)
 			{
-				Program.ShowError("Не удалось загрузить список ПК: " + profileStore.FilePath, exception);
-				statusLabel.Text = "Исправьте файл списка ПК: " + profileStore.FilePath;
+				Program.ShowError("Не удалось загрузить список ПК: " + computerListFile.FilePath, exception);
+				statusLabel.Text = "Исправьте файл списка ПК: " + computerListFile.FilePath;
 			}
 			finally
 			{
@@ -869,7 +876,7 @@ namespace Telecom.App
 			item.Selected = Convert.ToBoolean(computersGrid.Rows[args.RowIndex].Cells[0].Value);
 			try
 			{
-				profileStore.Save(computers.Select(value => value.Profile));
+				computerListFile.Save(computers.Select(value => value.Profile));
 				item.SavedSelection = item.Selected;
 			}
 			catch (Exception exception)
@@ -914,7 +921,7 @@ namespace Telecom.App
 
 			try
 			{
-				profileStore.Save(computers.Where(value => value != item).Select(value => value.Profile));
+				computerListFile.Save(computers.Where(value => value != item).Select(value => value.Profile));
 				changingSelection = true;
 				computers.Remove(item);
 				changingSelection = false;
@@ -955,7 +962,7 @@ namespace Telecom.App
 					{
 						profiles.Add(profile);
 					}
-					ComputerProfileStore.Validate(profiles);
+					ComputerListFile.Validate(profiles);
 					if (!profile.IsLocal)
 					{
 						NetworkCredential retained = dialog.KeepPreviousPassword ? credentialStore.Read(previous.Profile.Id) : null;
@@ -968,7 +975,7 @@ namespace Telecom.App
 						secretSaved = true;
 					}
 
-					profileStore.Save(profiles);
+					computerListFile.Save(profiles);
 					profileSaved = true;
 					changingSelection = true;
 					if (previous == null)
@@ -1125,14 +1132,14 @@ namespace Telecom.App
 					}
 					catch (Exception exception)
 					{
-						if (!ScanFailure.IsRecoverable(exception) && !(exception is InvalidOperationException))
+						if (!ErrorClassifier.IsRecoverable(exception) && !(exception is InvalidOperationException))
 						{
 							throw;
 						}
 
 						item.ConnectionStatus = exception.Message;
 						item.ScanStatus = scan ? "Пропущено: нет подключения" : item.ScanStatus;
-						errors.Add(new ScanError(item.Description, exception.Message, ScanFailure.Classify(exception)));
+						errors.Add(new ScanError(item.Description, exception.Message, ErrorClassifier.Classify(exception)));
 						logger.Error("Ошибка подключения к " + item.Description, exception);
 					}
 

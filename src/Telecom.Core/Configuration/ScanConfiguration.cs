@@ -5,8 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using Telecom.Core.Common;
+using Telecom.Core.Database;
 
-namespace Telecom.Core
+namespace Telecom.Core.Configuration
 {
 	public sealed class ScanConfiguration
 	{

@@ -13,7 +13,12 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Xml;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Access;
+using Telecom.Core.Certificates;
+using Telecom.Core.Common;
+using Telecom.Core.Computers;
+using Telecom.Core.Database;
+using Telecom.Core.Scanning;
 
 namespace Telecom.Tests
 {
@@ -47,7 +52,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "settings", "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "settings", "computers.xml"));
 				Check.Equal(0, store.Load().Count);
 				var first = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Бухгалтерия — Иванов & партнёры", @"LAB-PC\reader", true,
 					new[] { @" d:/Сертификаты & архив/ ", " ", @"D:\сертификаты & архив", @"C:\Users\*\Certs" });
@@ -85,7 +90,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				var first = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Бухгалтерия", null, true);
 				store.Save(new[] { first });
 				string previous = File.ReadAllText(store.FilePath);
@@ -105,7 +110,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				File.WriteAllText(store.FilePath, "<computers version=\"99\" />", Encoding.UTF8);
 				Check.Throws<InvalidDataException>(() => store.Load());
 				string xml = "<!DOCTYPE computers [<!ENTITY external SYSTEM 'file:///unavailable'>]><computers version=\"1\">&external;</computers>";
@@ -147,7 +152,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				Guid addressId = Guid.NewGuid();
 				Guid nameId = Guid.NewGuid();
 				File.WriteAllText(store.FilePath, "<computers version=\"1\"><computer id=\"" + addressId
@@ -188,7 +193,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				Guid id = Guid.NewGuid();
 				string xml = "<computers version=\"2\"><computer id=\"" + id + "\" ipAddress=\"" + ProfileComputerIp
 					+ "\" name=\"Подпись\" userName=\"LAB-PC\\reader\" selected=\"false\" /></computers>";
@@ -294,7 +299,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				var profile = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Прежний ПК", null, true);
 				store.Save(new[] { profile });
 				var access = new LabComputerAccess(workspace.DirectoryPath, ProfileComputerIp);
@@ -370,7 +375,7 @@ namespace Telecom.Tests
 					catch (Win32Exception exception)
 					{
 						Check.Equal(1219, exception.NativeErrorCode);
-						Check.Equal(ScanErrorKind.AccessDenied, ScanFailure.Classify(exception));
+						Check.Equal(ScanErrorKind.AccessDenied, ErrorClassifier.Classify(exception));
 					}
 
 					cancellation.Cancel();
@@ -389,7 +394,7 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				var profiles = new[]
 				{
 					new ComputerProfile(Guid.NewGuid(), ProfileOfflineIp, "Выключенный ПК", @"OFFLINE-PC\reader", true),

@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using Telecom.Core.Common;
 
-namespace Telecom.Core
+namespace Telecom.Core.Computers
 {
 	public sealed class ComputerProfile
 	{

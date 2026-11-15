@@ -5,18 +5,9 @@ using System.Net.Sockets;
 using System.Security;
 using System.Security.Cryptography;
 
-namespace Telecom.Core
+namespace Telecom.Core.Scanning
 {
-	public enum ScanErrorKind
-	{
-		Other,
-		NotFound,
-		AccessDenied,
-		Unavailable,
-		InvalidData
-	}
-
-	public static class ScanFailure
+	public static class ErrorClassifier
 	{
 		// Классифицирует ошибки по типу и Win32-коду, не анализируя локализованный текст Windows.
 		public static ScanErrorKind Classify(Exception exception)

@@ -11,7 +11,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Telecom.App;
-using Telecom.Core;
+using Telecom.Core.Certificates;
+using Telecom.Core.Computers;
+using Telecom.Core.Configuration;
+using Telecom.Core.Database;
+using Telecom.Core.Locations;
 
 namespace Telecom.Tests
 {
@@ -95,7 +99,7 @@ namespace Telecom.Tests
 				var available = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Рабочий ПК", @"LAB-PC\reader", false);
 				var offline = new ComputerProfile(Guid.NewGuid(), ProfileOfflineIp, "Недоступный ПК", @"OFFLINE-PC\reader", false);
 				var ignored = new ComputerProfile(Guid.NewGuid(), ProfileIgnoredIp, "ПК без находок", null, false);
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				store.Save(new[] { available, offline, ignored });
 				new ScanConfiguration(new[] { @"C:\Certs" }, new[] { @"C:\CSP\csptest.exe" }, 3, databaseConnectionString)
 					.Save(Path.Combine(workspace.DirectoryPath, "scan.config.xml"));
@@ -386,7 +390,7 @@ SELECT 0;");
 			var repository = new CertificateRepository(databaseConnectionString, logger);
 			using (var workspace = new TestWorkspace())
 			{
-				var store = new ComputerProfileStore(Path.Combine(workspace.DirectoryPath, "computers.xml"));
+				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.config.xml");
 				var directories = new[] { workspace.DirectoryPath };
 				var executables = new[] { Path.Combine(workspace.DirectoryPath, "csptest.exe") };

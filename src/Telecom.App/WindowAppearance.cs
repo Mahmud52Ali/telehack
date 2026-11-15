@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security;
 using System.Windows.Forms;
 using Microsoft.Win32;
-using Telecom.Core;
+using Telecom.Core.Logging;
 
 namespace Telecom.App
 {

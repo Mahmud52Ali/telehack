@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace Telecom.Core
+namespace Telecom.Core.Access
 {
 	public interface IComputerAccess : ICertificateFileSystem
 	{
