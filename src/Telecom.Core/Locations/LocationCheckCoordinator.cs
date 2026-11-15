@@ -10,30 +10,6 @@ using Telecom.Core.Logging;
 
 namespace Telecom.Core.Locations
 {
-	// Итог проверки наличия: сколько мест проверено, сколько итогов сохранено и была ли отмена.
-	public sealed class LocationCheckSummary
-	{
-		public int Checked { get; internal set; }
-		public int Saved { get; internal set; }
-		public bool Cancelled { get; internal set; }
-	}
-
-	// Ход проверки наличия: какой ПК проверяется и его номер в очереди.
-	public sealed class LocationCheckProgress
-	{
-		public string ComputerAddress { get; private set; }
-		public int Index { get; private set; }
-		public int Count { get; private set; }
-
-		// Запоминает номер ПК (с единицы) и общее число ПК.
-		public LocationCheckProgress(string computerAddress, int index, int count)
-		{
-			ComputerAddress = computerAddress;
-			Index = index;
-			Count = count;
-		}
-	}
-
 	// Сценарий «Проверить наличие»: для каждого ПК из сохранённых мест обнаружения перечитывает файлы
 	// или записи хранилища, сверяет серийный номер и сохраняет итог в БД. Работает синхронно.
 	public sealed class LocationCheckCoordinator
