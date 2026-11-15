@@ -24,6 +24,7 @@ namespace Telecom.Tests
 		private static void AddConfigurationTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация и журнал используют корень решения или отдельной поставки", CheckDataDirectory));
+			tests.Add(new KeyValuePair<string, Action>("Значок окна: ресурс, который загружает оформление, есть в сборке", CheckWindowIconResource));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: первый запуск создаёт configs/scan.config.xml из шаблона", CheckShippedConfiguration));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: повторный запуск сохраняет рабочий XML", CheckExistingConfiguration));
 			tests.Add(new KeyValuePair<string, Action>("Конфигурация: сохранение путей, таймаута и строки MSSQL", CheckConfigurationSave));
@@ -53,6 +54,18 @@ namespace Telecom.Tests
 				MethodInfo find = application.GetMethod("FindDataDirectory", BindingFlags.Static | BindingFlags.NonPublic);
 				Check.Equal(solutionDirectory, (string)find.Invoke(null, new object[] { buildDirectory }));
 				Check.Equal(releaseDirectory, (string)find.Invoke(null, new object[] { releaseDirectory }));
+			}
+		}
+
+		// Без значка окно не открывается; имя ресурса зависит от пространства имён, поэтому проверяем его отдельно.
+		private static void CheckWindowIconResource()
+		{
+			Assembly application = typeof(MainForm).Assembly;
+			Type appearance = application.GetType("Telecom.App.Theming.WindowAppearance", true);
+			var resourceName = (string)appearance.GetField("IconResourceName", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+			using (Stream icon = application.GetManifestResourceStream(resourceName))
+			{
+				Check.Equal(true, icon != null && icon.Length > 0);
 			}
 		}
 

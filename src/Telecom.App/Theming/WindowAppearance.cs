@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Resources;
 using System.Security;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -16,6 +17,8 @@ namespace Telecom.App.Theming
 		private const int DwmCaptionColor = 35;
 		private const int DwmTextColor = 36;
 		private const int DwmDefaultColor = -1;
+		// Имя встроенного ресурса: корневое пространство имён проекта + имя файла (см. EmbeddedResource в Telecom.App.csproj).
+		private const string IconResourceName = "Telecom.App.Telecom.ico";
 		private const string WindowsPersonalizeKey = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
 
 		private static readonly Font[] Fonts = Enumerable.Range(0,
@@ -30,11 +33,25 @@ namespace Telecom.App.Theming
 		// Применяет общие иконку, шрифт и оформление заголовка ко всем окнам приложения.
 		internal static void Apply(Form window, AutoScaleMode scaleMode = AutoScaleMode.Font)
 		{
-			window.Icon = new Icon(typeof(WindowAppearance), "Telecom.ico");
+			window.Icon = LoadIcon();
 			ApplyFont(window, AppearanceSettings.Default.FontPercent);
 			window.AutoScaleMode = scaleMode;
 			window.AutoScaleDimensions = window.CurrentAutoScaleDimensions;
 			window.HandleCreated += OnHandleCreated;
+		}
+
+		// Читает значок приложения из ресурсов сборки по полному имени, не зависящему от папки этого класса.
+		private static Icon LoadIcon()
+		{
+			using (Stream stream = typeof(WindowAppearance).Assembly.GetManifestResourceStream(IconResourceName))
+			{
+				if (stream == null)
+				{
+					throw new MissingManifestResourceException("В сборке нет ресурса " + IconResourceName + ".");
+				}
+
+				return new Icon(stream);
+			}
 		}
 
 		// Наследуемый шрифт меняется от базовых 9 пт, независимо от предыдущего множителя.

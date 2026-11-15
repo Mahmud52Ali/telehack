@@ -58,8 +58,13 @@ namespace Telecom.App
 			}
 			catch (Exception exception)
 			{
-				ErrorReporter.Show("Не удалось запустить или завершить приложение. Проверьте права на запись в папку "
-					+ AppPaths.DataDirectory + ".", exception);
+				string message = "Не удалось запустить или завершить приложение.";
+				if (exception is IOException || exception is UnauthorizedAccessException)
+				{
+					message += " Проверьте права на запись в папку " + AppPaths.DataDirectory + ".";
+				}
+
+				ErrorReporter.Show(message, exception);
 			}
 		}
 	}
