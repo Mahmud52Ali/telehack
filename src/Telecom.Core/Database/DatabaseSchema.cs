@@ -1,0 +1,87 @@
+using System.Data;
+using System.Data.SqlClient;
+
+namespace Telecom.Core.Database
+{
+	// Создание таблиц dbo.Certificates и dbo.CertificateLocations, если их нет.
+	public static class DatabaseSchema
+	{
+		// Блокировка приложения разрешает одному запуску за раз создать таблицы.
+		// Таблицы ранней версии без нужных столбцов не перестраиваются: запрос завершается понятной ошибкой.
+		private const string EnsureSchemaSql = @"
+DECLARE @LockResult INT;
+EXEC @LockResult = sp_getapplock @Resource = N'Telecom.Certificates.CreateTable', @LockMode = N'Exclusive', @LockOwner = N'Transaction';
+IF @LockResult < 0
+	THROW 50000, N'Не удалось получить блокировку для создания таблиц сертификатов.', 1;
+
+IF OBJECT_ID(N'dbo.Certificates', N'U') IS NULL
+BEGIN
+	CREATE TABLE dbo.Certificates
+	(
+		SerialNumber NVARCHAR(128) NOT NULL CONSTRAINT PK_Certificates PRIMARY KEY,
+		CreatedAt DATETIME2(3) NOT NULL,
+		UpdatedAt DATETIME2(3) NOT NULL,
+		OwnerName NVARCHAR(512) NOT NULL,
+		CertificationAuthority NVARCHAR(512) NOT NULL,
+		CryptoProVersion NVARCHAR(64) NULL,
+		IsCryptoProLicenseEmbedded BIT NOT NULL,
+		ExpiresAtUtc DATETIME2(0) NULL
+	);
+END
+
+IF OBJECT_ID(N'dbo.CertificateLocations', N'U') IS NULL
+BEGIN
+	CREATE TABLE dbo.CertificateLocations
+	(
+		SerialNumber NVARCHAR(128) NOT NULL,
+		ComputerAddress NVARCHAR(255) NOT NULL,
+		SourcePath NVARCHAR(MAX) NOT NULL,
+		CheckStatus TINYINT NULL,
+		CheckedAtUtc DATETIME2(3) NULL,
+		CONSTRAINT FK_CertificateLocations_Certificates FOREIGN KEY (SerialNumber)
+			REFERENCES dbo.Certificates (SerialNumber) ON DELETE CASCADE
+	);
+	CREATE CLUSTERED INDEX IX_CertificateLocations_SerialNumber_ComputerAddress
+		ON dbo.CertificateLocations (SerialNumber, ComputerAddress);
+END;
+
+IF COL_LENGTH(N'dbo.Certificates', N'ExpiresAtUtc') IS NULL
+	OR COL_LENGTH(N'dbo.CertificateLocations', N'CheckStatus') IS NULL
+	OR COL_LENGTH(N'dbo.CertificateLocations', N'CheckedAtUtc') IS NULL
+BEGIN
+	THROW 50001, @OutdatedTablesMessage, 1;
+END";
+
+		// Текст ошибки для таблиц, созданных ранней версией программы без нужных столбцов.
+		// Приложение такие таблицы не перестраивает, чтобы не потерять данные без ведома администратора.
+		internal static string OutdatedTablesMessage(string databaseName)
+		{
+			return "Таблицы dbo.Certificates и dbo.CertificateLocations в базе «" + databaseName + "» созданы ранней версией "
+				+ "программы и не содержат нужных столбцов. Удалите обе таблицы — при следующем сканировании они создадутся заново.";
+		}
+
+		// Создаёт базу и таблицы, если их нет; существующие записи не меняются.
+		public static void EnsureExists(DatabaseConnection database)
+		{
+			using (SqlConnection connection = database.OpenCreatingDatabase())
+			{
+				Ensure(connection);
+			}
+		}
+
+		// Готовит схему в отдельной короткой транзакции и освобождает блокировку после её завершения.
+		internal static void Ensure(SqlConnection connection)
+		{
+			using (SqlTransaction transaction = connection.BeginTransaction())
+			{
+				using (var command = new SqlCommand(EnsureSchemaSql, connection, transaction))
+				{
+					command.Parameters.Add("@OutdatedTablesMessage", SqlDbType.NVarChar, 2048).Value = OutdatedTablesMessage(connection.Database);
+					command.ExecuteNonQuery();
+				}
+
+				transaction.Commit();
+			}
+		}
+	}
+}

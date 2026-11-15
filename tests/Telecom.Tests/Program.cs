@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Versioning;
-using Telecom.App;
-using Telecom.Core;
+using Telecom.App.Windows;
+using Telecom.Core.Certificates;
 
 namespace Telecom.Tests
 {
@@ -23,7 +23,7 @@ namespace Telecom.Tests
 			{
 				fixturesDirectory = args.Length == 0 ? FindFixtures() : Path.GetFullPath(args[0]);
 				var tests = new List<KeyValuePair<string, Action>>();
-				tests.Add(new KeyValuePair<string, Action>("Целевая платформа всех сборок — .NET Framework 4.5", CheckTargetFramework));
+				AddTest(tests, "Целевая платформа всех сборок — .NET Framework 4.5", CheckTargetFramework);
 				AddParserTests(tests);
 				AddScannerTests(tests);
 				AddLoggerTests(tests);
@@ -32,14 +32,21 @@ namespace Telecom.Tests
 				AddComputerProfileTests(tests);
 				AddLocalComputerTests(tests);
 				AddCertificateLocationTests(tests);
+				AddScanCoordinatorTests(tests);
 				AddDatabaseTests(tests);
 				int failures = 0;
+				int skipped = 0;
 				foreach (KeyValuePair<string, Action> test in tests)
 				{
 					try
 					{
 						test.Value();
 						Console.WriteLine("PASS: " + test.Key);
+					}
+					catch (SkipTestException exception)
+					{
+						skipped++;
+						Console.WriteLine("SKIP: " + test.Key + " — " + exception.Message);
 					}
 					catch (Exception exception)
 					{
@@ -48,7 +55,7 @@ namespace Telecom.Tests
 					}
 				}
 
-				Console.WriteLine("Проверок: " + tests.Count + "; ошибок: " + failures);
+				Console.WriteLine("Проверок: " + tests.Count + "; ошибок: " + failures + "; пропущено: " + skipped);
 				return failures == 0 ? 0 : 1;
 			}
 			catch (Exception exception)
@@ -56,6 +63,26 @@ namespace Telecom.Tests
 				Console.Error.WriteLine(exception);
 				return 1;
 			}
+		}
+
+		// Регистрирует проверку под понятным именем, которое выводится в PASS/FAIL.
+		private static void AddTest(ICollection<KeyValuePair<string, Action>> tests, string name, Action test)
+		{
+			tests.Add(new KeyValuePair<string, Action>(name, test));
+		}
+
+		// Регистрирует проверку, которой нужны Windows API или WinForms; на других ОС она пропускается.
+		private static void AddWindowsOnly(ICollection<KeyValuePair<string, Action>> tests, string name, Action test)
+		{
+			AddTest(tests, name, () =>
+			{
+				if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+				{
+					throw new SkipTestException("нужна Windows");
+				}
+
+				test();
+			});
 		}
 
 		// Находит исходные публичные примеры без копирования сертификатов в проект тестов.
@@ -85,7 +112,8 @@ namespace Telecom.Tests
 		// Проверяет метаданные платформы, а не только наличие установленного современного SDK.
 		private static void CheckTargetFramework()
 		{
-			foreach (Assembly assembly in new[] { typeof(CertificateParser).Assembly, typeof(WindowsFileSystem).Assembly, Assembly.GetExecutingAssembly() })
+			foreach (Assembly assembly in new[] { typeof(CertificateParser).Assembly, typeof(WindowsFileSystem).Assembly,
+				Assembly.GetExecutingAssembly() })
 			{
 				var target = (TargetFrameworkAttribute)Attribute.GetCustomAttribute(assembly, typeof(TargetFrameworkAttribute));
 				Check.Equal(".NETFramework,Version=v4.5", target.FrameworkName);

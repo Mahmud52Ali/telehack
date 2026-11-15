@@ -1,21 +1,18 @@
 using System;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.VisualBasic.ApplicationServices;
-using Telecom.Core;
+using Telecom.App.Forms;
+using Telecom.Core.Logging;
 
 namespace Telecom.App
 {
 	internal static class Program
 	{
-		internal static readonly string DataDirectory = FindDataDirectory(AppDomain.CurrentDomain.BaseDirectory);
-		private static readonly string LogDirectory = Path.Combine(DataDirectory, "logs");
-		internal static readonly string LogFilePath = Path.Combine(LogDirectory, "telecom.log");
-		internal static readonly string ErrorLogFilePath = Path.Combine(LogDirectory, "telecomErrors.log");
 		private static ILogger logger;
 
+		// Один экземпляр на сеанс Windows: повторный запуск активирует уже открытое окно.
 		private sealed class SingleInstanceApplication : WindowsFormsApplicationBase
 		{
 			internal bool Started { get; private set; }
@@ -29,8 +26,8 @@ namespace Telecom.App
 			// Создаёт главное окно только в первом процессе.
 			protected override void OnCreateMainForm()
 			{
-				logger.Info("Приложение запущено.");
-				MainForm = new Telecom.App.MainForm(logger);
+				logger.Info(StartupMessage());
+				MainForm = new Telecom.App.Forms.MainForm(logger);
 				Started = true;
 			}
 
@@ -42,86 +39,42 @@ namespace Telecom.App
 			}
 		}
 
+		// Первая строка журнала по образцу из условий кейса: кто запустил программу, на каком ПК и какую версию.
+		private static string StartupMessage()
+		{
+			return string.Format("Приложение запущено. User login: {0}\\{1}, компьютер: {2}, версия: {3}",
+				Environment.UserDomainName, Environment.UserName, Environment.MachineName,
+				Assembly.GetExecutingAssembly().GetName().Version);
+		}
+
 		// Настраивает журнал, обработчики исключений и запускает окно администратора.
 		[STAThread]
 		private static void Main()
 		{
 			try
 			{
-				Directory.CreateDirectory(LogDirectory);
-				logger = new FileLogger(LogFilePath, ErrorLogFilePath);
-				Application.ThreadException += OnThreadException;
-				AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-				TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+				Directory.CreateDirectory(AppPaths.LogDirectory);
+				logger = new FileLogger(AppPaths.LogFilePath, AppPaths.ErrorLogFilePath);
+				ErrorReporter.Install(logger);
 				Application.EnableVisualStyles();
 				Application.SetCompatibleTextRenderingDefault(false);
-				Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 				var application = new SingleInstanceApplication();
 				application.Run(Environment.GetCommandLineArgs());
 				if (application.Started)
 				{
-					logger.Info("Приложение закрыто.");
+					logger.Info("Выход из приложения");
 				}
 			}
 			catch (Exception exception)
 			{
-				ShowError("Не удалось запустить или завершить приложение. Проверьте права на запись в папку " + DataDirectory + ".", exception);
-			}
-		}
-
-		// Находит корень решения для сборки из репозитория и папку exe для отдельной поставки.
-		private static string FindDataDirectory(string applicationDirectory)
-		{
-			for (var directory = new DirectoryInfo(applicationDirectory); directory != null; directory = directory.Parent)
-			{
-				if (File.Exists(Path.Combine(directory.FullName, "Telecom.sln")))
+				string message = "Не удалось запустить или завершить приложение.";
+				if (exception is IOException || exception is UnauthorizedAccessException)
 				{
-					return directory.FullName;
+					message += " Проверьте права на запись в папку " + AppPaths.DataDirectory + ".";
 				}
+
+				ErrorReporter.Show(message, exception);
 			}
-
-			return applicationDirectory;
-		}
-
-		// Показывает ошибку и сохраняет диагностику; сбой самого журнала тоже явно сообщается пользователю.
-		internal static void ShowError(string message, Exception exception)
-		{
-			string details = message + Environment.NewLine + exception.Message;
-			try
-			{
-				if (logger != null)
-				{
-					logger.Error(message, exception);
-				}
-			}
-			catch (Exception loggingException)
-			{
-				details += Environment.NewLine + "Журнал недоступен: " + loggingException.Message;
-				Console.Error.WriteLine(exception);
-				Console.Error.WriteLine(loggingException);
-			}
-
-			MessageBox.Show(details, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-		}
-
-		// Фиксирует необработанные ошибки потока интерфейса.
-		private static void OnThreadException(object sender, ThreadExceptionEventArgs args)
-		{
-			ShowError("Ошибка интерфейса.", args.Exception);
-		}
-
-		// Фиксирует необработанное исключение до завершения процесса CLR.
-		private static void OnUnhandledException(object sender, System.UnhandledExceptionEventArgs args)
-		{
-			var exception = args.ExceptionObject as Exception;
-			ShowError("Необработанная ошибка приложения.", exception ?? new Exception("Неизвестная ошибка CLR."));
-		}
-
-		// Сохраняет ошибки задач, которые не были получены вызывающим кодом.
-		private static void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs args)
-		{
-			ShowError("Необработанная ошибка фоновой задачи.", args.Exception);
-			args.SetObserved();
 		}
 	}
 }
