@@ -47,7 +47,7 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("БД: отсутствующая таблица создаётся, повторный вызов безопасен", CheckTableCreation));
 			tests.Add(new KeyValuePair<string, Action>("БД: первое внесение, время обновления равно времени внесения", CheckFirstSave));
 			tests.Add(new KeyValuePair<string, Action>("БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave));
-			tests.Add(new KeyValuePair<string, Action>("БД: обновление старой схемы, срок и повторный сбор путей", CheckSchemaUpgradeAndLocations));
+			tests.Add(new KeyValuePair<string, Action>("БД: срок действия и повторный сбор путей без дублей", CheckRepeatedLocations));
 			tests.Add(new KeyValuePair<string, Action>("БД: обе таблицы, подсветка срока и удаление находок", CheckDatabaseView));
 			tests.Add(new KeyValuePair<string, Action>("БД: отдельная проверка файлов и ключей хранилища по сохранённым путям", CheckLocationVerification));
 			tests.Add(new KeyValuePair<string, Action>("БД: устаревшая проверка не перезаписывает новый итог и не восстанавливает удалённую находку", CheckLocationCheckVersions));
@@ -95,7 +95,6 @@ namespace Telecom.Tests
 				repository.Save(new[] { new CertificateInfo(ivanovSerial, Ivanov, Ivanov, @"C:\Certs\a.cer", false) }, null, ProfileOfflineIp);
 				repository.Save(new[] { new CertificateInfo(ivanovSerial, Ivanov, Ivanov, @"C:\Certs\a.cer", false) }, null, "192.0.2.99");
 				DateTime updatedAt = ReadCertificate(ivanovSerial).UpdatedAt;
-				ExecuteScalar("ALTER TABLE dbo.CertificateLocations DROP COLUMN CheckStatus, CheckedAtUtc; SELECT 0;");
 
 				var available = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Рабочий ПК", @"LAB-PC\reader", false);
 				var offline = new ComputerProfile(Guid.NewGuid(), ProfileOfflineIp, "Недоступный ПК", @"OFFLINE-PC\reader", false);
@@ -334,28 +333,12 @@ namespace Telecom.Tests
 			Check.Equal("5.0.13455", second.CryptoProVersion);
 		}
 
-		// Сохраняет старую запись при обновлении схемы и проверяет дедупликацию путей.
-		private static void CheckSchemaUpgradeAndLocations()
+		// Повторный сбор тех же находок не добавляет строк, а длинный путь и срок действия сохраняются.
+		private static void CheckRepeatedLocations()
 		{
 			DropCertificatesTable();
-			ExecuteScalar(@"
-CREATE TABLE dbo.Certificates
-(
-	SerialNumber NVARCHAR(128) NOT NULL PRIMARY KEY,
-	CreatedAt DATETIME2(3) NOT NULL,
-	UpdatedAt DATETIME2(3) NOT NULL,
-	OwnerName NVARCHAR(512) NOT NULL,
-	CertificationAuthority NVARCHAR(512) NOT NULL,
-	CryptoProVersion NVARCHAR(64) NULL,
-	IsCryptoProLicenseEmbedded BIT NOT NULL
-);
-INSERT INTO dbo.Certificates VALUES (N'03A14016', '2025-10-26T10:20:00', '2025-10-26T10:20:00', N'Иванов', N'УЦ', NULL, 0);
-SELECT 0;");
 			var repository = new TestDatabase(databaseConnectionString, new MemoryLogger());
-			DataRow oldRecord = repository.ReadAll().Rows[0];
-			Check.Equal(DBNull.Value, oldRecord["ExpiresAtUtc"]);
 			Check.Equal(0, repository.ReadLocations().Rows.Count);
-			Check.Equal(DBNull.Value, ExecuteScalar("SELECT COL_LENGTH(N'dbo.Certificates', N'ExpiresAtUtc');"));
 
 			const string address = "192.0.2.10";
 			var expiresAt = new DateTime(2027, 10, 26, 10, 21, 31, DateTimeKind.Utc);
@@ -365,13 +348,15 @@ SELECT 0;");
 				new CertificateInfo("03A14016", "Иванов", "УЦ", @"C:\Certs\a.cer", false, expiresAt),
 				new CertificateInfo("03a14016", "Иванов", "УЦ", longPath, false, expiresAt)
 			};
-			CertificateSaveResult migrated = repository.Save(findings, null, address);
-			Check.Equal(1, migrated.Updated);
-			Check.Equal(0, migrated.Inserted);
-			repository.Save(findings, null, address);
+			CertificateSaveResult first = repository.Save(findings, null, address);
+			Check.Equal(1, first.Inserted);
+			DataRow firstRecord = repository.ReadAll().Rows[0];
+			CertificateSaveResult repeated = repository.Save(findings, null, address);
+			Check.Equal(1, repeated.Updated);
+			Check.Equal(0, repeated.Inserted);
 			Check.Equal(1, CountRows());
 			DataRow currentRecord = repository.ReadAll().Rows[0];
-			Check.Equal(oldRecord["CreatedAt"], currentRecord["CreatedAt"]);
+			Check.Equal(firstRecord["CreatedAt"], currentRecord["CreatedAt"]);
 			Check.Equal(expiresAt, currentRecord["ExpiresAtUtc"]);
 			DataTable locations = repository.ReadLocations();
 			Check.Equal(2, locations.Rows.Count);

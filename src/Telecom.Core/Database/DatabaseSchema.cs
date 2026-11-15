@@ -5,12 +5,12 @@ namespace Telecom.Core.Database
 	// Создание таблиц dbo.Certificates и dbo.CertificateLocations, если их нет.
 	public static class DatabaseSchema
 	{
-		// Блокировка приложения разрешает одному запуску за раз создать или обновить схему.
+		// Блокировка приложения разрешает одному запуску за раз создать таблицы.
 		private const string EnsureSchemaSql = @"
 DECLARE @LockResult INT;
 EXEC @LockResult = sp_getapplock @Resource = N'Telecom.Certificates.CreateTable', @LockMode = N'Exclusive', @LockOwner = N'Transaction';
 IF @LockResult < 0
-	THROW 50000, N'Не удалось получить блокировку для обновления схемы сертификатов.', 1;
+	THROW 50000, N'Не удалось получить блокировку для создания таблиц сертификатов.', 1;
 
 IF OBJECT_ID(N'dbo.Certificates', N'U') IS NULL
 BEGIN
@@ -25,10 +25,6 @@ BEGIN
 		IsCryptoProLicenseEmbedded BIT NOT NULL,
 		ExpiresAtUtc DATETIME2(0) NULL
 	);
-END
-ELSE IF COL_LENGTH(N'dbo.Certificates', N'ExpiresAtUtc') IS NULL
-BEGIN
-	ALTER TABLE dbo.Certificates ADD ExpiresAtUtc DATETIME2(0) NULL;
 END
 
 IF OBJECT_ID(N'dbo.CertificateLocations', N'U') IS NULL
@@ -45,13 +41,6 @@ BEGIN
 	);
 	CREATE CLUSTERED INDEX IX_CertificateLocations_SerialNumber_ComputerAddress
 		ON dbo.CertificateLocations (SerialNumber, ComputerAddress);
-END
-ELSE
-BEGIN
-	IF COL_LENGTH(N'dbo.CertificateLocations', N'CheckStatus') IS NULL
-		ALTER TABLE dbo.CertificateLocations ADD CheckStatus TINYINT NULL;
-	IF COL_LENGTH(N'dbo.CertificateLocations', N'CheckedAtUtc') IS NULL
-		ALTER TABLE dbo.CertificateLocations ADD CheckedAtUtc DATETIME2(3) NULL;
 END";
 
 		// Создаёт базу и таблицы, если их нет; существующие записи не меняются.
