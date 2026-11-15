@@ -24,7 +24,8 @@ namespace Telecom.Tests
 					throw Failure;
 				}
 
-				Calls.Add(new SaveCall { Certificates = certificates.ToList(), CryptoProVersion = cryptoProVersion, ComputerAddress = computerAddress });
+				Calls.Add(new SaveCall { Certificates = certificates.ToList(), CryptoProVersion = cryptoProVersion,
+					ComputerAddress = computerAddress });
 				return new CertificateSaveResult();
 			}
 		}

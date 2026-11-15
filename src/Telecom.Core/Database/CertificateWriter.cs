@@ -67,7 +67,9 @@ END";
 				using (SqlTransaction transaction = connection.BeginTransaction())
 				{
 					var bySerialNumber = certificates.GroupBy(certificate => certificate.SerialNumber, StringComparer.OrdinalIgnoreCase);
-					foreach (IGrouping<string, CertificateInfo> group in bySerialNumber.OrderBy(records => records.Key, StringComparer.OrdinalIgnoreCase))
+					// Один серийный номер — одна строка Certificates; все его пути записываются в CertificateLocations.
+					foreach (IGrouping<string, CertificateInfo> group in bySerialNumber.OrderBy(
+						records => records.Key, StringComparer.OrdinalIgnoreCase))
 					{
 						CertificateInfo certificate = group.First();
 						if (SaveCertificate(connection, transaction, certificate, cryptoProVersion))

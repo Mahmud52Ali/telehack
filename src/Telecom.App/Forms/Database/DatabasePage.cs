@@ -34,7 +34,10 @@ namespace Telecom.App.Forms.Database
 		private readonly Button refreshDatabaseButton = new Button { Text = "Обновить" };
 		private readonly Button checkLocationsButton = new Button { Text = "Проверить наличие", AutoSize = true, Visible = false };
 		private readonly ToolStripMenuItem checkLocationMenuItem = new ToolStripMenuItem("Проверить наличие");
-		private readonly Label databaseStatusLabel = new Label { Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft, AutoEllipsis = true };
+		private readonly Label databaseStatusLabel = new Label
+		{
+			Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft, AutoEllipsis = true
+		};
 		private DatabaseConnection displayedDatabase;
 		private bool databaseRefreshPending;
 		private bool deletingCertificate;

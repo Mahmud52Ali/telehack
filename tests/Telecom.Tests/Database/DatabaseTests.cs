@@ -44,21 +44,21 @@ namespace Telecom.Tests
 				throw new InvalidOperationException("Имя базы для проверок должно оканчиваться на Tests: " + DatabaseVariable);
 			}
 
-			tests.Add(new KeyValuePair<string, Action>("БД: отсутствующая таблица создаётся, повторный вызов безопасен", CheckTableCreation));
-			tests.Add(new KeyValuePair<string, Action>("БД: первое внесение, время обновления равно времени внесения", CheckFirstSave));
-			tests.Add(new KeyValuePair<string, Action>("БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave));
-			tests.Add(new KeyValuePair<string, Action>("БД: срок действия и повторный сбор путей без дублей", CheckRepeatedLocations));
-			tests.Add(new KeyValuePair<string, Action>("БД: обе таблицы, подсветка срока и удаление находок", CheckDatabaseView));
-			tests.Add(new KeyValuePair<string, Action>("БД: отдельная проверка файлов и ключей хранилища по сохранённым путям", CheckLocationVerification));
-			tests.Add(new KeyValuePair<string, Action>("БД: устаревшая проверка не перезаписывает новый итог и не восстанавливает удалённую находку", CheckLocationCheckVersions));
-			tests.Add(new KeyValuePair<string, Action>("БД: один серийный номер в нескольких папках — одна строка", CheckDuplicateSerialNumber));
-			tests.Add(new KeyValuePair<string, Action>("БД: неизвестная версия КриптоПро и текст с кавычками", CheckMissingVersionAndQuotes));
-			tests.Add(new KeyValuePair<string, Action>("БД: одновременные первые запуски не спорят за создание таблицы", CheckParallelTableCreation));
-			tests.Add(new KeyValuePair<string, Action>("БД: пересекающиеся записи не дают дублей и времени обновления раньше внесения", CheckParallelSave));
-			tests.Add(new KeyValuePair<string, Action>("БД: отсутствующая база создаётся вместе с таблицей", CheckDatabaseCreation));
-			tests.Add(new KeyValuePair<string, Action>("БД: одновременные первые запуски не спорят за создание базы", CheckParallelDatabaseCreation));
-			tests.Add(new KeyValuePair<string, Action>("БД: без прав на создание базы — понятная ошибка", CheckDatabaseCreationDenied));
-			tests.Add(new KeyValuePair<string, Action>("БД: недоступный сервер даёт исключение, а не пустой успех", CheckUnavailableDatabase));
+			AddTest(tests, "БД: отсутствующая таблица создаётся, повторный вызов безопасен", CheckTableCreation);
+			AddTest(tests, "БД: первое внесение, время обновления равно времени внесения", CheckFirstSave);
+			AddTest(tests, "БД: повторное внесение обновляет строки без дублей", CheckRepeatedSave);
+			AddTest(tests, "БД: срок действия и повторный сбор путей без дублей", CheckRepeatedLocations);
+			AddTest(tests, "БД: обе таблицы, подсветка срока и удаление находок", CheckDatabaseView);
+			AddTest(tests, "БД: отдельная проверка файлов и ключей хранилища по сохранённым путям", CheckLocationVerification);
+			AddTest(tests, "БД: устаревшая проверка не перезаписывает новый итог и не восстанавливает удалённую находку", CheckLocationCheckVersions);
+			AddTest(tests, "БД: один серийный номер в нескольких папках — одна строка", CheckDuplicateSerialNumber);
+			AddTest(tests, "БД: неизвестная версия КриптоПро и текст с кавычками", CheckMissingVersionAndQuotes);
+			AddTest(tests, "БД: одновременные первые запуски не спорят за создание таблицы", CheckParallelTableCreation);
+			AddTest(tests, "БД: пересекающиеся записи не дают дублей и времени обновления раньше внесения", CheckParallelSave);
+			AddTest(tests, "БД: отсутствующая база создаётся вместе с таблицей", CheckDatabaseCreation);
+			AddTest(tests, "БД: одновременные первые запуски не спорят за создание базы", CheckParallelDatabaseCreation);
+			AddTest(tests, "БД: без прав на создание базы — понятная ошибка", CheckDatabaseCreationDenied);
+			AddTest(tests, "БД: недоступный сервер даёт исключение, а не пустой успех", CheckUnavailableDatabase);
 		}
 
 		// Проверяет кнопку с настоящей БД, временными файлами и подставными сетевыми адаптерами.
@@ -472,7 +472,8 @@ namespace Telecom.Tests
 					Check.Equal(1, grid.Rows.Count);
 					Check.Equal("378F0E85", grid.Rows[0].Cells[0].Value);
 					Check.Equal("Запись удалена. Записей: 1", status.Text);
-					Check.Equal("Запись удалена. Серийный номер: 03A14016. Оператор: " + Environment.UserDomainName + "\\" + Environment.UserName + ".",
+					Check.Equal("Запись удалена. Серийный номер: 03A14016. Оператор: " + Environment.UserDomainName + "\\"
+						+ Environment.UserName + ".",
 						logger.Messages.Last());
 
 					tables.SelectedIndex = 1;
@@ -492,7 +493,8 @@ namespace Telecom.Tests
 					Check.Equal(true, status.Text.Contains("Сертификат остаётся в реестре."));
 					Check.Equal(true, logger.Messages.Last().Contains("192.0.2.11"));
 
-					repository.Save(new[] { new CertificateInfo("378F0E85", "Петров Петр Петрович", "Тестовый УЦ", @"D:\Backup\petrov.cer", false, null) },
+					repository.Save(new[] { new CertificateInfo("378F0E85", "Петров Петр Петрович", "Тестовый УЦ",
+						@"D:\Backup\petrov.cer", false, null) },
 						null, "192.0.2.10");
 					refresh.PerformClick();
 					WaitForDatabaseView(refresh);

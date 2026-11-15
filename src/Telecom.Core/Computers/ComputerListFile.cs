@@ -115,7 +115,8 @@ namespace Telecom.Core.Computers
 				}
 
 				root.Add(new XElement("computer", new XAttribute("id", profile.Id), new XAttribute("ipAddress", profile.IpAddress),
-					new XAttribute("name", profile.DisplayName), new XAttribute("userName", profile.UserName), new XAttribute("selected", profile.Selected),
+					new XAttribute("name", profile.DisplayName), new XAttribute("userName", profile.UserName),
+					new XAttribute("selected", profile.Selected),
 					profile.AdditionalDirectories.Select(path => new XElement("additionalDirectory", path))));
 			}
 

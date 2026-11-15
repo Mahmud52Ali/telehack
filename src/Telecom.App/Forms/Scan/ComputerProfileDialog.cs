@@ -56,7 +56,8 @@ namespace Telecom.App.Forms.Scan
 				passwordInput.UseSystemPasswordChar = true;
 				var hint = new Label
 				{
-					Text = "Пароль сохраняется в диспетчере учётных данных Windows.\r\nПри редактировании пустое поле сохраняет прежний пароль той же учётки.",
+					Text = "Пароль сохраняется в диспетчере учётных данных Windows.\r\n"
+						+ "При редактировании пустое поле сохраняет прежний пароль той же учётки.",
 					AutoSize = true, Dock = DockStyle.Fill
 				};
 				layout.Controls.Add(hint, 0, row++);

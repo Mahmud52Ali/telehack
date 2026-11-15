@@ -50,7 +50,8 @@ namespace Telecom.Core.Locations
 			string storePrefix = ComputerScanner.GetMachineStoreSource(computerAddress) + @"\";
 			var files = new List<IGrouping<string, CertificateLocationCheck>>();
 			var entries = new Dictionary<string, IGrouping<string, CertificateLocationCheck>>(StringComparer.OrdinalIgnoreCase);
-			foreach (IGrouping<string, CertificateLocationCheck> path in locations.GroupBy(location => location.SourcePath, StringComparer.OrdinalIgnoreCase))
+			foreach (IGrouping<string, CertificateLocationCheck> path in locations.GroupBy(
+				location => location.SourcePath, StringComparer.OrdinalIgnoreCase))
 			{
 				if (path.Key.StartsWith(storePrefix, StringComparison.OrdinalIgnoreCase))
 				{

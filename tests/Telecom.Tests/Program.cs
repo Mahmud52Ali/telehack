@@ -23,7 +23,7 @@ namespace Telecom.Tests
 			{
 				fixturesDirectory = args.Length == 0 ? FindFixtures() : Path.GetFullPath(args[0]);
 				var tests = new List<KeyValuePair<string, Action>>();
-				tests.Add(new KeyValuePair<string, Action>("Целевая платформа всех сборок — .NET Framework 4.5", CheckTargetFramework));
+				AddTest(tests, "Целевая платформа всех сборок — .NET Framework 4.5", CheckTargetFramework);
 				AddParserTests(tests);
 				AddScannerTests(tests);
 				AddLoggerTests(tests);
@@ -65,10 +65,16 @@ namespace Telecom.Tests
 			}
 		}
 
+		// Регистрирует проверку под понятным именем, которое выводится в PASS/FAIL.
+		private static void AddTest(ICollection<KeyValuePair<string, Action>> tests, string name, Action test)
+		{
+			tests.Add(new KeyValuePair<string, Action>(name, test));
+		}
+
 		// Регистрирует проверку, которой нужны Windows API или WinForms; на других ОС она пропускается.
 		private static void AddWindowsOnly(ICollection<KeyValuePair<string, Action>> tests, string name, Action test)
 		{
-			tests.Add(new KeyValuePair<string, Action>(name, () =>
+			AddTest(tests, name, () =>
 			{
 				if (Environment.OSVersion.Platform != PlatformID.Win32NT)
 				{
@@ -76,7 +82,7 @@ namespace Telecom.Tests
 				}
 
 				test();
-			}));
+			});
 		}
 
 		// Находит исходные публичные примеры без копирования сертификатов в проект тестов.
@@ -106,7 +112,8 @@ namespace Telecom.Tests
 		// Проверяет метаданные платформы, а не только наличие установленного современного SDK.
 		private static void CheckTargetFramework()
 		{
-			foreach (Assembly assembly in new[] { typeof(CertificateParser).Assembly, typeof(WindowsFileSystem).Assembly, Assembly.GetExecutingAssembly() })
+			foreach (Assembly assembly in new[] { typeof(CertificateParser).Assembly, typeof(WindowsFileSystem).Assembly,
+				Assembly.GetExecutingAssembly() })
 			{
 				var target = (TargetFrameworkAttribute)Attribute.GetCustomAttribute(assembly, typeof(TargetFrameworkAttribute));
 				Check.Equal(".NETFramework,Version=v4.5", target.FrameworkName);

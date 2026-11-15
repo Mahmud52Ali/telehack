@@ -22,7 +22,8 @@ namespace Telecom.Tests
 		private sealed class LabMachineCertificateStore : IMachineCertificateStore
 		{
 			private readonly Action<ComputerProfile, CancellationToken, Action<string, byte[]>, Action<string, Exception>> read;
-			private readonly Action<ComputerProfile, IEnumerable<string>, CancellationToken, Action<string, byte[]>, Action<string, Exception>> readEntries;
+			private readonly Action<ComputerProfile, IEnumerable<string>, CancellationToken, Action<string, byte[]>, Action<string,
+				Exception>> readEntries;
 			internal int Reads { get; private set; }
 
 			// Задаёт сценарий чтения хранилища без доступа к реестру компьютеров пользователя.

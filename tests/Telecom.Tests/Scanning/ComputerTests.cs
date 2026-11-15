@@ -21,18 +21,18 @@ namespace Telecom.Tests
 			AddWindowsOnly(tests, "ПК: два профиля по маске и версия КриптоПро", CheckComputerCollection);
 			AddWindowsOnly(tests, "ПК: служебные ссылки распознаются по назначению независимо от языка", CheckProfileCompatibilityLinks);
 			AddWindowsOnly(tests, "ПК: ссылки на профили и недоступные назначения остаются ошибками", CheckUnverifiedProfileLinks);
-			tests.Add(new KeyValuePair<string, Action>("ПК: вложенные маски и диск D:", CheckNestedPatterns));
-			tests.Add(new KeyValuePair<string, Action>("ПК: перекрывающиеся папки не дублируют источники", CheckOverlappingSources));
+			AddTest(tests, "ПК: вложенные маски и диск D:", CheckNestedPatterns);
+			AddTest(tests, "ПК: перекрывающиеся папки не дублируют источники", CheckOverlappingSources);
 			AddWindowsOnly(tests, "ПК: отказ доступа к профилю даёт частичный результат", CheckPartialComputer);
-			tests.Add(new KeyValuePair<string, Action>("ПК: закрытая административная папка отличается от отсутствующего файла", CheckDeniedComputer));
-			tests.Add(new KeyValuePair<string, Action>("ПК: сетевой отказ не превращается в пустой успех", CheckUnavailableComputer));
-			tests.Add(new KeyValuePair<string, Action>("ПК: пустые личные хранилища отличаются от отказа доступа", CheckEmptyUserCertificateStores));
-			tests.Add(new KeyValuePair<string, Action>("ПК: отсутствующая папка и произвольная маска без совпадений видны как ошибки", CheckMissingComputerDirectories));
-			tests.Add(new KeyValuePair<string, Action>("КриптоПро: отсутствие, запасной путь и отказ доступа", CheckCryptoProOutcomes));
-			tests.Add(new KeyValuePair<string, Action>("КриптоПро: ProductVersion нормализуется без потери ненулевой ревизии", CheckProductVersionNormalization));
-			tests.Add(new KeyValuePair<string, Action>("ПК: отмена до подключения и после первого сертификата", CheckComputerCancellation));
-			tests.Add(new KeyValuePair<string, Action>("Коды Windows классифицируются независимо от языка сообщения", CheckNetworkErrorClassification));
-			tests.Add(new KeyValuePair<string, Action>("Неожиданная ошибка реализации не маскируется под сетевой отказ", CheckUnexpectedComputerFailure));
+			AddTest(tests, "ПК: закрытая административная папка отличается от отсутствующего файла", CheckDeniedComputer);
+			AddTest(tests, "ПК: сетевой отказ не превращается в пустой успех", CheckUnavailableComputer);
+			AddTest(tests, "ПК: пустые личные хранилища отличаются от отказа доступа", CheckEmptyUserCertificateStores);
+			AddTest(tests, "ПК: отсутствующая папка и произвольная маска без совпадений видны как ошибки", CheckMissingComputerDirectories);
+			AddTest(tests, "КриптоПро: отсутствие, запасной путь и отказ доступа", CheckCryptoProOutcomes);
+			AddTest(tests, "КриптоПро: ProductVersion нормализуется без потери ненулевой ревизии", CheckProductVersionNormalization);
+			AddTest(tests, "ПК: отмена до подключения и после первого сертификата", CheckComputerCancellation);
+			AddTest(tests, "Коды Windows классифицируются независимо от языка сообщения", CheckNetworkErrorClassification);
+			AddTest(tests, "Неожиданная ошибка реализации не маскируется под сетевой отказ", CheckUnexpectedComputerFailure);
 		}
 
 		// Проверяет сбор из реальных профилей рядом с пустым профилем и штатными ссылками Windows.
@@ -216,7 +216,8 @@ namespace Telecom.Tests
 		{
 			using (var workspace = new TestWorkspace())
 			{
-				foreach (Exception failure in new Exception[] { new TimeoutException("timeout"), new SocketException(10061), new IOException("network", unchecked((int)0x80070035)) })
+				foreach (Exception failure in new Exception[] { new TimeoutException("timeout"), new SocketException(10061),
+					new IOException("network", unchecked((int)0x80070035)) })
 				{
 					var access = CreateLabAccess(workspace.DirectoryPath);
 					access.ConnectionFailure = failure;
@@ -240,7 +241,8 @@ namespace Telecom.Tests
 				var access = new LabComputerAccess(workspace.DirectoryPath, computer);
 				var scanner = new ComputerScanner(access, new CertificateParser(), new MemoryLogger());
 				var store = new LabMachineCertificateStore((target, token, readCertificate, reportError) => Check.Equal(computer, target.IpAddress));
-				ScanConfiguration configuration = ScanConfigurationFile.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml"));
+				ScanConfiguration configuration = ScanConfigurationFile.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+					"scan.config.template.xml"));
 				ComputerScanResult empty = scanner.Scan(profile, configuration, store, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Complete, empty.Status);
 				Check.Equal(0, empty.Certificates.Count);
@@ -262,7 +264,8 @@ namespace Telecom.Tests
 				Check.Equal(1, denied.Errors.Count);
 				Check.Equal(ScanErrorKind.AccessDenied, denied.Errors[0].Kind);
 
-				ComputerScanResult missingRoot = scanner.Scan(profile, LabConfiguration(@"D:\Profiles\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates"),
+				ComputerScanResult missingRoot = scanner.Scan(profile,
+					LabConfiguration(@"D:\Profiles\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates"),
 					store, CancellationToken.None);
 				Check.Equal(ComputerScanStatus.Partial, missingRoot.Status);
 				Check.Equal(1, missingRoot.Errors.Count);
@@ -333,7 +336,8 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
 				cancellation.Cancel();
-				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, cancellation.Token);
+				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(),
+					new MemoryLogger()).Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, cancellation.Token);
 				Check.Equal(ComputerScanStatus.Cancelled, result.Status);
 				Check.Equal(0, access.ConnectionChecks);
 			}
@@ -344,7 +348,8 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
 				access.OnFileRead = () => cancellation.Cancel();
-				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, cancellation.Token);
+				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(),
+					new MemoryLogger()).Scan(LabProfile(), LabConfiguration(@"C:\Users\*\Certs"), null, cancellation.Token);
 				Check.Equal(ComputerScanStatus.Cancelled, result.Status);
 				Check.Equal(1, result.Certificates.Count);
 			}
@@ -405,7 +410,8 @@ namespace Telecom.Tests
 		// Запускает настоящий координатор сбора с тестовым адаптером доступа.
 		private static ComputerScanResult ScanLab(LabComputerAccess access, ScanConfiguration configuration)
 		{
-			return new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), configuration, null, CancellationToken.None);
+			return new ComputerScanner(access, new CertificateParser(), new MemoryLogger()).Scan(LabProfile(), configuration, null,
+				CancellationToken.None);
 		}
 	}
 }

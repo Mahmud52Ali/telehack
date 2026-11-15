@@ -23,7 +23,7 @@ namespace Telecom.Tests
 		// Проверяет локальную строку, её настройки и сбор данных без SMB и сохранённых паролей.
 		private static void AddLocalComputerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Этот компьютер: настройки сохраняются отдельно от удалённых ПК", CheckLocalComputerSettings));
+			AddTest(tests, "Этот компьютер: настройки сохраняются отдельно от удалённых ПК", CheckLocalComputerSettings);
 			AddWindowsOnly(tests, "Этот компьютер: редактор меняет только дополнительные пути", CheckLocalComputerDialog);
 			AddWindowsOnly(tests, "Этот компьютер: файлы, маски, версия, ошибки и отмена без сети", CheckLocalComputerScan);
 			AddWindowsOnly(tests, "Этот компьютер: чтение настоящего локального хранилища без учётки", CheckLocalMachineStore);
@@ -60,7 +60,8 @@ namespace Telecom.Tests
 				Check.Equal(xml, File.ReadAllText(store.FilePath));
 				File.WriteAllText(store.FilePath, "<computers version=\"4\"><localComputer selected=\"true\" userName=\"changed\" /></computers>");
 				Check.Throws<InvalidDataException>(() => store.Load());
-				File.WriteAllText(store.FilePath, "<computers version=\"4\"><localComputer selected=\"true\" /><localComputer selected=\"false\" /></computers>");
+				File.WriteAllText(store.FilePath,
+					"<computers version=\"4\"><localComputer selected=\"true\" /><localComputer selected=\"false\" /></computers>");
 				Check.Throws<InvalidDataException>(() => store.Load());
 			}
 		}
@@ -119,7 +120,8 @@ namespace Telecom.Tests
 				var access = new LocalComputerAccess { DeniedDirectory = denied, CryptoPath = cryptoPath };
 				var logger = new MemoryLogger();
 				var scanner = new ComputerScanner(access, new CertificateParser(), logger);
-				var local = ComputerProfile.CreateLocal(true, new[] { Path.Combine(workspace.DirectoryPath, "profiles", "*", "Certs"), common, denied });
+				var local = ComputerProfile.CreateLocal(true, new[] { Path.Combine(workspace.DirectoryPath, "profiles", "*",
+					"Certs"), common, denied });
 				var configuration = new ScanConfiguration(new[] { common }, new[] { cryptoPath }, 3, string.Empty)
 					.WithAdditionalDirectories(local.AdditionalDirectories);
 				var machineStore = new LabMachineCertificateStore((profile, token, readCertificate, reportError) =>
@@ -205,7 +207,8 @@ namespace Telecom.Tests
 					"<scanSettings><directories><directory>" + SecurityElement.Escape(common) + "</directory></directories>"
 					+ "<cryptoProExecutables><path>" + SecurityElement.Escape(cryptoPath) + "</path></cryptoProExecutables></scanSettings>");
 				var access = new LocalComputerAccess { CryptoPath = cryptoPath };
-				var machineStore = new LabMachineCertificateStore((profile, token, readCertificate, reportError) => Check.Equal(true, profile.IsLocal));
+				var machineStore = new LabMachineCertificateStore((profile, token, readCertificate,
+					reportError) => Check.Equal(true, profile.IsLocal));
 				var connection = new WindowsSmbConnection(new WindowsCredentialStore(), access,
 					(path, user, password) => { throw new InvalidOperationException("Локальный ПК не должен использовать SMB."); });
 				using (var form = new MainForm(new MemoryLogger(), store, access, connection, machineStore))

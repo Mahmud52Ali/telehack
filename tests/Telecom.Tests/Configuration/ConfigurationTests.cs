@@ -23,20 +23,20 @@ namespace Telecom.Tests
 		// Регистрирует проверки реального XML, валидации путей и построения адресов административных папок.
 		private static void AddConfigurationTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация и журнал используют корень решения или отдельной поставки", CheckDataDirectory));
-			tests.Add(new KeyValuePair<string, Action>("Значок окна: ресурс, который загружает оформление, есть в сборке", CheckWindowIconResource));
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация: первый запуск создаёт configs/scan.config.xml из шаблона", CheckShippedConfiguration));
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация: повторный запуск сохраняет рабочий XML", CheckExistingConfiguration));
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация: сохранение путей, таймаута и строки MSSQL", CheckConfigurationSave));
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация: проверка импорта, точное восстановление шаблона и повторное создание", CheckConfigurationReplacement));
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация: точная копия рабочего XML и восстановление после удаления", CheckConfigurationCopy));
+			AddTest(tests, "Конфигурация и журнал используют корень решения или отдельной поставки", CheckDataDirectory);
+			AddTest(tests, "Значок окна: ресурс, который загружает оформление, есть в сборке", CheckWindowIconResource);
+			AddTest(tests, "Конфигурация: первый запуск создаёт configs/scan.config.xml из шаблона", CheckShippedConfiguration);
+			AddTest(tests, "Конфигурация: повторный запуск сохраняет рабочий XML", CheckExistingConfiguration);
+			AddTest(tests, "Конфигурация: сохранение путей, таймаута и строки MSSQL", CheckConfigurationSave);
+			AddTest(tests, "Конфигурация: проверка импорта, точное восстановление шаблона и повторное создание", CheckConfigurationReplacement);
+			AddTest(tests, "Конфигурация: точная копия рабочего XML и восстановление после удаления", CheckConfigurationCopy);
 			AddWindowsOnly(tests, "Настройки: прокрутка списков, сохранение и отмена из окна", CheckSettingsEditor);
 			AddWindowsOnly(tests, "Персонализация: тема и масштаб применяются сразу и сохраняются отдельно", CheckPersonalization);
-			tests.Add(new KeyValuePair<string, Action>("Пустые, ошибочные и повторяющиеся разделы отвергаются", CheckInvalidConfiguration));
-			tests.Add(new KeyValuePair<string, Action>("DTD и внешние XML-сущности запрещены", CheckExternalEntities));
-			tests.Add(new KeyValuePair<string, Action>("Конфигурация: нормализация, повторы и таймаут", CheckConfigurationValidation));
-			tests.Add(new KeyValuePair<string, Action>("Преобразование C:, D: и корня диска в UNC", CheckRemotePaths));
-			tests.Add(new KeyValuePair<string, Action>("Пути с обходом каталогов и некорректные имена ПК отвергаются", CheckInvalidRemotePaths));
+			AddTest(tests, "Пустые, ошибочные и повторяющиеся разделы отвергаются", CheckInvalidConfiguration);
+			AddTest(tests, "DTD и внешние XML-сущности запрещены", CheckExternalEntities);
+			AddTest(tests, "Конфигурация: нормализация, повторы и таймаут", CheckConfigurationValidation);
+			AddTest(tests, "Преобразование C:, D: и корня диска в UNC", CheckRemotePaths);
+			AddTest(tests, "Пути с обходом каталогов и некорректные имена ПК отвергаются", CheckInvalidRemotePaths);
 		}
 
 		// Сверяет расположение данных в сборке из репозитория и в отдельной папке с программой.
@@ -382,7 +382,8 @@ namespace Telecom.Tests
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, "<scanSettings><directories /></scanSettings>");
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
-				File.WriteAllText(path, ConfigurationXml().Replace("</scanSettings>", "<directories><directory>C:\\Extra</directory></directories></scanSettings>"));
+				File.WriteAllText(path, ConfigurationXml().Replace("</scanSettings>",
+					"<directories><directory>C:\\Extra</directory></directories></scanSettings>"));
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("<directory>", "<direcotry>").Replace("</directory>", "</direcotry>"));
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
@@ -390,7 +391,8 @@ namespace Telecom.Tests
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 				File.WriteAllText(path, ConfigurationXml().Replace("<directory>", "<directory recurse=\"false\">"));
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
-				File.WriteAllText(path, ConfigurationXml().Replace("</scanSettings>", "<connectionString>first</connectionString><connectionString>second</connectionString></scanSettings>"));
+				File.WriteAllText(path, ConfigurationXml().Replace("</scanSettings>",
+					"<connectionString>first</connectionString><connectionString>second</connectionString></scanSettings>"));
 				Check.Throws<InvalidDataException>(() => ScanConfigurationFile.Load(path));
 			}
 		}
@@ -418,7 +420,8 @@ namespace Telecom.Tests
 			Check.Throws<InvalidDataException>(() => new ScanConfiguration(new[] { @"C:\Certs" }, new[] { PrimaryCryptoPath }, 0, string.Empty));
 			Check.Throws<InvalidDataException>(() => new ScanConfiguration(new[] { @"C:\Certs" }, new[] { PrimaryCryptoPath }, 61, string.Empty));
 			Check.Throws<InvalidDataException>(() => new ScanConfiguration(new[] { @"C:\Certs" }, new[] { @"C:\Tools\other.exe" }, 3, string.Empty));
-			Check.Throws<ArgumentException>(() => new ScanConfiguration(new[] { @"C:\Users\I*\Certs" }, new[] { PrimaryCryptoPath }, 3, string.Empty));
+			Check.Throws<ArgumentException>(() => new ScanConfiguration(new[] { @"C:\Users\I*\Certs" },
+				new[] { PrimaryCryptoPath }, 3, string.Empty));
 
 			var common = new ScanConfiguration(new[] { @"C:\CommonCerts" }, new[] { PrimaryCryptoPath, SecondaryCryptoPath }, 7,
 				"Server=YOUR_SQL_SERVER;Database=Certificates;Integrated Security=True");

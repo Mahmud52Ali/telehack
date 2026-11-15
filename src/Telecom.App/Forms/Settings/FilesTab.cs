@@ -34,7 +34,8 @@ namespace Telecom.App.Forms.Settings
 			this.fontPercent = fontPercent;
 
 			var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8), ColumnCount = 1, RowCount = 4 };
-			layout.Controls.Add(CreateFileRow("Файл конфигурации", configurationPath, "Просмотреть XML", "Восстановите или загрузите конфигурацию."), 0, 0);
+			layout.Controls.Add(CreateFileRow("Файл конфигурации", configurationPath, "Просмотреть XML",
+				"Восстановите или загрузите конфигурацию."), 0, 0);
 			var import = new Button { Text = "Загрузить XML…", AutoSize = true };
 			import.Click += OnImport;
 			var saveCopy = new Button { Text = "Сохранить копию XML…", AutoSize = true, Enabled = false };
@@ -45,7 +46,8 @@ namespace Telecom.App.Forms.Settings
 			restore.Click += OnRestore;
 			layout.Controls.Add(StatusReporter.CreateActions(import, saveCopy, restore), 0, 1);
 			layout.Controls.Add(CreateFileRow("Журнал работы", AppPaths.LogFilePath, "Открыть", "Файл журнала отсутствует."), 0, 2);
-			layout.Controls.Add(CreateFileRow("Журнал ошибок", AppPaths.ErrorLogFilePath, "Открыть", "Файл появится после первой записанной ошибки."), 0, 3);
+			layout.Controls.Add(CreateFileRow("Журнал ошибок", AppPaths.ErrorLogFilePath, "Открыть",
+				"Файл появится после первой записанной ошибки."), 0, 3);
 			Controls.Add(layout);
 		}
 

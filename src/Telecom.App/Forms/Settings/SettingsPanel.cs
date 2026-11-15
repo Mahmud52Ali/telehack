@@ -22,7 +22,10 @@ namespace Telecom.App.Forms.Settings
 		private readonly AppearanceTab personalizationPage;
 		private readonly Button saveButton = new Button { Text = "Сохранить", AutoSize = true, Enabled = false };
 		private readonly Button discardButton = new Button { Text = "Отменить изменения", AutoSize = true, Enabled = false };
-		private readonly Label settingsStatusLabel = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+		private readonly Label settingsStatusLabel = new Label
+		{
+			Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true
+		};
 		private bool updating;
 
 		// Есть ли несохранённые изменения сканирования или базы данных.
@@ -165,7 +168,8 @@ namespace Telecom.App.Forms.Settings
 					tabs.SelectedTab = filesPage;
 				}
 				SetUnsavedChanges(false);
-				status.ReportFailure(this, settingsStatusLabel, "Не удалось прочитать рабочий XML. Загрузите или восстановите конфигурацию.", exception);
+				status.ReportFailure(this, settingsStatusLabel,
+					"Не удалось прочитать рабочий XML. Загрузите или восстановите конфигурацию.", exception);
 			}
 		}
 

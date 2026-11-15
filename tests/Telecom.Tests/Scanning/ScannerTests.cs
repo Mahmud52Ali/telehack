@@ -14,14 +14,14 @@ namespace Telecom.Tests
 		// Регистрирует проверки реального обхода и моделируемых ошибок доступа.
 		private static void AddScannerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Папка организаторов: два сертификата, P12 не читаются", CheckOrganizerDirectory));
-			tests.Add(new KeyValuePair<string, Action>("Повреждённый файл не мешает чтению исправных", CheckBadFileIsolation));
-			tests.Add(new KeyValuePair<string, Action>("Пустая папка отличается от отсутствующей", CheckEmptyAndMissingDirectory));
-			tests.Add(new KeyValuePair<string, Action>("Отказ доступа в подпапке не останавливает соседние", CheckAccessDeniedIsolation));
-			tests.Add(new KeyValuePair<string, Action>("Ссылки пропускаются с явной ошибкой охвата", CheckLinkedDirectory));
-			tests.Add(new KeyValuePair<string, Action>("Отмена до запуска и после первого файла", CheckCancellation));
-			tests.Add(new KeyValuePair<string, Action>("CRT и файл без расширения читаются сканером", CheckAlternativeFileNames));
-			tests.Add(new KeyValuePair<string, Action>("Слишком большой файл пропускается с ошибкой", CheckOversizedFile));
+			AddTest(tests, "Папка организаторов: два сертификата, P12 не читаются", CheckOrganizerDirectory);
+			AddTest(tests, "Повреждённый файл не мешает чтению исправных", CheckBadFileIsolation);
+			AddTest(tests, "Пустая папка отличается от отсутствующей", CheckEmptyAndMissingDirectory);
+			AddTest(tests, "Отказ доступа в подпапке не останавливает соседние", CheckAccessDeniedIsolation);
+			AddTest(tests, "Ссылки пропускаются с явной ошибкой охвата", CheckLinkedDirectory);
+			AddTest(tests, "Отмена до запуска и после первого файла", CheckCancellation);
+			AddTest(tests, "CRT и файл без расширения читаются сканером", CheckAlternativeFileNames);
+			AddTest(tests, "Слишком большой файл пропускается с ошибкой", CheckOversizedFile);
 		}
 
 		// Проверяет вложенные папки организаторов и отсутствие попыток чтения контейнеров закрытых ключей.
@@ -29,7 +29,8 @@ namespace Telecom.Tests
 		{
 			var logger = new MemoryLogger();
 			var source = new RestrictedFileSystem { RejectPrivateKeyRead = true };
-			DirectoryScanResult result = new DirectoryScanner(source, new CertificateParser(), logger).Scan(fixturesDirectory, CancellationToken.None);
+			DirectoryScanResult result = new DirectoryScanner(source, new CertificateParser(), logger).Scan(fixturesDirectory,
+				CancellationToken.None);
 			Check.Equal(2, result.Certificates.Count);
 			Check.Equal(0, result.Errors.Count);
 			Check.Equal(3, result.SkippedFiles);
@@ -85,7 +86,8 @@ namespace Telecom.Tests
 				CopyCertificates(readable);
 				var source = new RestrictedFileSystem { DeniedDirectory = denied };
 				var logger = new MemoryLogger();
-				DirectoryScanResult result = new DirectoryScanner(source, new CertificateParser(), logger).Scan(workspace.DirectoryPath, CancellationToken.None);
+				DirectoryScanResult result = new DirectoryScanner(source, new CertificateParser(),
+					logger).Scan(workspace.DirectoryPath, CancellationToken.None);
 				Check.Equal(2, result.Certificates.Count);
 				Check.Equal(1, result.Errors.Count);
 				Check.Equal(denied, result.Errors[0].Path);
@@ -102,7 +104,8 @@ namespace Telecom.Tests
 				Directory.CreateDirectory(linked);
 				CopyCertificates(linked);
 				var source = new RestrictedFileSystem { LinkedDirectory = linked };
-				DirectoryScanResult result = new DirectoryScanner(source, new CertificateParser(), new MemoryLogger()).Scan(workspace.DirectoryPath, CancellationToken.None);
+				DirectoryScanResult result = new DirectoryScanner(source, new CertificateParser(),
+					new MemoryLogger()).Scan(workspace.DirectoryPath, CancellationToken.None);
 				Check.Equal(0, result.Certificates.Count);
 				Check.Equal(1, result.Errors.Count);
 			}

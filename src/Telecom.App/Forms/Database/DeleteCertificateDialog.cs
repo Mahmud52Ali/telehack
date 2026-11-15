@@ -31,9 +31,14 @@ namespace Telecom.App.Forms.Database
 
 			var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12), ColumnCount = 1, RowCount = 7 };
 			layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-			layout.Controls.Add(new Label { Text = "Владелец: " + ownerName, AutoSize = true, MaximumSize = new Size(450, 0), UseMnemonic = false }, 0, 0);
+			var owner = new Label { Text = "Владелец: " + ownerName, AutoSize = true, MaximumSize = new Size(450, 0), UseMnemonic = false };
+			layout.Controls.Add(owner, 0, 0);
 			layout.Controls.Add(new Label { Text = "Серийный номер записи", AutoSize = true }, 0, 1);
-			layout.Controls.Add(new TextBox { Text = serialNumber, ReadOnly = true, Dock = DockStyle.Fill, AccessibleName = "Серийный номер записи", TabStop = false }, 0, 2);
+			var serialNumberText = new TextBox
+			{
+				Text = serialNumber, ReadOnly = true, Dock = DockStyle.Fill, AccessibleName = "Серийный номер записи", TabStop = false
+			};
+			layout.Controls.Add(serialNumberText, 0, 2);
 			deletionDetails.Text = details;
 			layout.Controls.Add(deletionDetails, 0, 3);
 			layout.Controls.Add(new Label { Text = "Введите полный серийный номер для подтверждения.", AutoSize = true }, 0, 4);

@@ -21,9 +21,9 @@ namespace Telecom.Tests
 		// Регистрирует проверки файла журнала, параллельной записи и диагностики исключений.
 		private static void AddLoggerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Параллельный журнал: 100 полных строк с миллисекундами", CheckConcurrentLogging));
-			tests.Add(new KeyValuePair<string, Action>("Полный журнал и копия ошибок с одинаковым временем и стеком", CheckExceptionLogging));
-			tests.Add(new KeyValuePair<string, Action>("Недоступный журнал не скрывает ошибку записи", CheckUnavailableLog));
+			AddTest(tests, "Параллельный журнал: 100 полных строк с миллисекундами", CheckConcurrentLogging);
+			AddTest(tests, "Полный журнал и копия ошибок с одинаковым временем и стеком", CheckExceptionLogging);
+			AddTest(tests, "Недоступный журнал не скрывает ошибку записи", CheckUnavailableLog);
 			AddWindowsOnly(tests, "Ошибка проверки MSSQL попадает в журнал и интерфейс", () => CheckDatabaseFailureLogging(false));
 			AddWindowsOnly(tests, "Ошибка проверки MSSQL попадает в журнал после уничтожения панели", () => CheckDatabaseFailureLogging(true));
 		}

@@ -72,7 +72,8 @@ namespace Telecom.Core.Locations
 						}
 					}
 
-					List<CertificateLocationCheck> finished = computerLocations.Where(location => location.CheckedAtUtc != default(DateTime)).ToList();
+					List<CertificateLocationCheck> finished = computerLocations
+						.Where(location => location.CheckedAtUtc != default(DateTime)).ToList();
 					summary.Saved += writer.SaveLocationChecks(finished);
 					summary.Checked += finished.Count;
 					cancellationToken.ThrowIfCancellationRequested();

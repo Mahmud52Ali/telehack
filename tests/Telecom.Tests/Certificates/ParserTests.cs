@@ -12,13 +12,13 @@ namespace Telecom.Tests
 		// Регистрирует форматы и повреждения, существенные для сертификатов и файлов Windows-хранилища.
 		private static void AddParserTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("DER: Иванов и Петров", CheckDerCertificates));
-			tests.Add(new KeyValuePair<string, Action>("Base64 и PEM: Иванов и Петров", CheckTextCertificates));
+			AddTest(tests, "DER: Иванов и Петров", CheckDerCertificates);
+			AddTest(tests, "Base64 и PEM: Иванов и Петров", CheckTextCertificates);
 			AddWindowsOnly(tests, "Сериализованные сертификаты Windows", CheckSerializedCertificates);
 			AddWindowsOnly(tests, "Пропуск неизвестного свойства перед сертификатом", CheckUnknownSerializedProperty);
-			tests.Add(new KeyValuePair<string, Action>("Отказ на пустом, обрезанном и постороннем содержимом", CheckInvalidCertificates));
-			tests.Add(new KeyValuePair<string, Action>("Отказ на переполненной и нулевой длине свойства", CheckInvalidSerializedLengths));
-			tests.Add(new KeyValuePair<string, Action>("PKCS#12 не импортируется как открытый сертификат", CheckPrivateKeyContainerRejected));
+			AddTest(tests, "Отказ на пустом, обрезанном и постороннем содержимом", CheckInvalidCertificates);
+			AddTest(tests, "Отказ на переполненной и нулевой длине свойства", CheckInvalidSerializedLengths);
+			AddTest(tests, "PKCS#12 не импортируется как открытый сертификат", CheckPrivateKeyContainerRejected);
 		}
 
 		// Сверяет реальные сертификаты с заранее известными владельцами, УЦ и серийными номерами.
@@ -36,7 +36,8 @@ namespace Telecom.Tests
 				string serial = owner == Ivanov ? "03A14016" : "378F0E85";
 				string base64 = Convert.ToBase64String(File.ReadAllBytes(Fixture(owner, ".cer")), Base64FormattingOptions.InsertLineBreaks);
 				AssertCertificate(Encoding.UTF8.GetBytes(base64), owner, serial);
-				AssertCertificate(Encoding.UTF8.GetBytes("\uFEFF-----BEGIN CERTIFICATE-----\r\n" + base64 + "\r\n-----END CERTIFICATE-----\r\n"), owner, serial);
+				AssertCertificate(Encoding.UTF8.GetBytes("\uFEFF-----BEGIN CERTIFICATE-----\r\n" + base64
+					+ "\r\n-----END CERTIFICATE-----\r\n"), owner, serial);
 			}
 		}
 

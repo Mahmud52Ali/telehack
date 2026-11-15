@@ -18,11 +18,11 @@ namespace Telecom.Tests
 		// Проверяет сценарий «подключить → сканировать → записать» без сети, SMB и MSSQL.
 		private static void AddScanCoordinatorTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Координатор: недоступный ПК не мешает сканированию и записи остальных", CheckCoordinatorFullRun));
-			tests.Add(new KeyValuePair<string, Action>("Координатор: ошибка записи в БД учитывается и не прерывает запуск", CheckCoordinatorSaveFailure));
-			tests.Add(new KeyValuePair<string, Action>("Координатор: без строки подключения запись пропускается", CheckCoordinatorWithoutDatabase));
-			tests.Add(new KeyValuePair<string, Action>("Координатор: режим подключения не сканирует", CheckCoordinatorConnectOnly));
-			tests.Add(new KeyValuePair<string, Action>("Координатор: отмена во время подключения", CheckCoordinatorCancellation));
+			AddTest(tests, "Координатор: недоступный ПК не мешает сканированию и записи остальных", CheckCoordinatorFullRun);
+			AddTest(tests, "Координатор: ошибка записи в БД учитывается и не прерывает запуск", CheckCoordinatorSaveFailure);
+			AddTest(tests, "Координатор: без строки подключения запись пропускается", CheckCoordinatorWithoutDatabase);
+			AddTest(tests, "Координатор: режим подключения не сканирует", CheckCoordinatorConnectOnly);
+			AddTest(tests, "Координатор: отмена во время подключения", CheckCoordinatorCancellation);
 		}
 
 		// Один ПК доступен, второй нет: доступный сканируется и записывается, недоступный получает ошибку подключения.
@@ -72,7 +72,8 @@ namespace Telecom.Tests
 			var coordinator = new ScanCoordinator(new CertificateFolderAccess(), new FakeConnector(), null,
 				connectionString => { throw new InvalidOperationException("Объект записи не должен создаваться."); }, new MemoryLogger());
 
-			ScanRunSummary summary = coordinator.Run(new[] { online }, true, CoordinatorConfiguration(string.Empty), progress, CancellationToken.None);
+			ScanRunSummary summary = coordinator.Run(new[] { online }, true, CoordinatorConfiguration(string.Empty), progress,
+				CancellationToken.None);
 
 			Check.Equal(0, summary.DatabaseFailures);
 			Check.Equal("Connecting Connected Scanning Scanned SaveSkippedNoDatabase", progress.StagesOf(online));

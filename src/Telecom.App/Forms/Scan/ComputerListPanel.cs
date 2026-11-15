@@ -336,7 +336,7 @@ namespace Telecom.App.Forms.Scan
 				catch (Exception exception)
 				{
 					ErrorReporter.Show("Список ПК сохранён, но прежнюю запись Telecom/Computer/" + profile.Id.ToString("N")
-						+ " для " + profile.DisplayName + " (" + profile.IpAddress + ") нужно удалить из диспетчера учётных данных вручную.", exception);
+						+ " для " + profile.Description + " нужно удалить из диспетчера учётных данных вручную.", exception);
 				}
 			}
 		}

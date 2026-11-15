@@ -33,7 +33,8 @@ namespace Telecom.App.Forms.Settings
 			themeInput.AccessibleName = "Тема";
 			themeInput.Items.AddRange(new object[] { "Светлая", "Тёмная", "Системная" });
 			fontScaleInput.AccessibleName = "Масштаб шрифта";
-			for (int percent = AppearanceSettings.MinFontPercent; percent <= AppearanceSettings.MaxFontPercent; percent += AppearanceSettings.FontPercentStep)
+			for (int percent = AppearanceSettings.MinFontPercent; percent <= AppearanceSettings.MaxFontPercent;
+				percent += AppearanceSettings.FontPercentStep)
 			{
 				fontScaleInput.Items.Add(percent.ToString(CultureInfo.InvariantCulture) + "%");
 			}

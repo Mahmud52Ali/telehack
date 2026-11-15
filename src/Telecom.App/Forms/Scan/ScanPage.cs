@@ -179,7 +179,8 @@ namespace Telecom.App.Forms.Scan
 			}
 
 			Dictionary<ComputerProfile, ComputerRow> rows = selected.ToDictionary(item => item.Profile);
-			var progress = new ControlProgress<ComputerProgress>(this, update => ShowProgress(rows[update.Profile], update, scan, errors, certificates));
+			var progress = new ControlProgress<ComputerProgress>(this,
+				update => ShowProgress(rows[update.Profile], update, scan, errors, certificates));
 			try
 			{
 				ScanConfiguration configuration = await Task.Run(() => ScanConfigurationFile.Load(configurationFilePath), token);
@@ -200,7 +201,8 @@ namespace Telecom.App.Forms.Scan
 					item.ConnectionStatus = "Подключение отменено";
 				}
 
-				foreach (ComputerRow item in selected.Where(value => value.ScanStatus == "Ожидание сканирования" || value.ScanStatus == "Сканирование…"))
+				foreach (ComputerRow item in selected.Where(
+					value => value.ScanStatus == "Ожидание сканирования" || value.ScanStatus == "Сканирование…"))
 				{
 					item.ScanStatus = "Отменено";
 				}

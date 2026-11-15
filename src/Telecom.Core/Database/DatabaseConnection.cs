@@ -108,7 +108,8 @@ END CATCH";
 					throw;
 				}
 
-				throw new InvalidOperationException("База данных \"" + databaseName + "\" не найдена на сервере, а у учётной записи нет права её создать. "
+				throw new InvalidOperationException("База данных \"" + databaseName + "\" не найдена на сервере, "
+					+ "а у учётной записи нет права её создать. "
 					+ "Создайте базу вручную или выдайте учётной записи право на создание баз.", exception);
 			}
 

@@ -32,13 +32,13 @@ namespace Telecom.Tests
 		// Проверяет постоянные настройки и границу авторизации без обращения к настоящим SMB-серверам.
 		private static void AddComputerProfileTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Список ПК: сохранение дополнительных путей, выбора и учёток", CheckComputerProfileRoundTrip));
-			tests.Add(new KeyValuePair<string, Action>("Список ПК: дубли не повреждают прежний файл", CheckDuplicateComputerProfiles));
-			tests.Add(new KeyValuePair<string, Action>("Список ПК: повреждённый XML и DTD не принимаются", CheckInvalidComputerProfiles));
-			tests.Add(new KeyValuePair<string, Action>("Список ПК: только полный IPv4 без имён и неоднозначных сокращений", CheckProfileIpv4));
+			AddTest(tests, "Список ПК: сохранение дополнительных путей, выбора и учёток", CheckComputerProfileRoundTrip);
+			AddTest(tests, "Список ПК: дубли не повреждают прежний файл", CheckDuplicateComputerProfiles);
+			AddTest(tests, "Список ПК: повреждённый XML и DTD не принимаются", CheckInvalidComputerProfiles);
+			AddTest(tests, "Список ПК: только полный IPv4 без имён и неоднозначных сокращений", CheckProfileIpv4);
 			AddWindowsOnly(tests, "Редактор ПК: проверка IPv4 и путей с сохранением учётки", CheckComputerProfileDialog);
 			AddWindowsOnly(tests, "Учётки Windows: запись, обновление и удаление собственного секрета", CheckWindowsCredentialStore);
-			tests.Add(new KeyValuePair<string, Action>("SMB: ПК без логина требует настройки перед подключением", CheckSmbWithoutCredentials));
+			AddTest(tests, "SMB: ПК без логина требует настройки перед подключением", CheckSmbWithoutCredentials);
 			AddWindowsOnly(tests, "SMB: после проверки TCP используется сохранённая учётка ПК", CheckExplicitSmbConnection);
 			AddWindowsOnly(tests, "SMB: конфликт учёток и отмена не отключают существующие сеансы", CheckSmbConnectionErrors);
 			AddWindowsOnly(tests, "Интерфейс: сбор из папок и хранилища «Личное» с обработкой отказов", CheckComputerSelectionFlow);
@@ -200,7 +200,8 @@ namespace Telecom.Tests
 				Check.Equal(2, saved.AdditionalDirectories.Count);
 				Check.Equal(@"D:\Extra", saved.AdditionalDirectories[0]);
 				Check.Equal(@"D:\Profiles\*\Certs", saved.AdditionalDirectories[1]);
-				Check.Equal(true, (bool)dialogType.GetProperty("KeepPreviousPassword", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(dialog, null));
+				Check.Equal(true, (bool)dialogType.GetProperty("KeepPreviousPassword",
+					BindingFlags.NonPublic | BindingFlags.Instance).GetValue(dialog, null));
 			}
 		}
 
@@ -448,7 +449,8 @@ namespace Telecom.Tests
 						Check.Equal(false, access.AttemptedComputers.Contains(ProfileWithoutLoginIp));
 						var certificates = (IList<CertificateInfo>)FormField<DataGridView>(form, "certificatesGrid").DataSource;
 						Check.Equal(5, certificates.Count);
-						var sources = new HashSet<string>(certificates.Select(certificate => certificate.SourcePath), StringComparer.OrdinalIgnoreCase);
+						var sources = new HashSet<string>(certificates.Select(certificate => certificate.SourcePath),
+							StringComparer.OrdinalIgnoreCase);
 						Check.Equal(true, sources.SetEquals(new[]
 						{
 							@"\\" + ProfileComputerIp + @"\C$\CommonCerts\ivanov.cer",
@@ -457,7 +459,9 @@ namespace Telecom.Tests
 							@"\\" + ProfileCommonOnlyIp + @"\C$\CommonCerts\petrov.cer",
 							"Реестр " + ProfileCommonOnlyIp + @"\LocalMachine\My\personal-certificate"
 						}));
-						Check.Equal("03A14016", certificates.Single(certificate => certificate.SourcePath.EndsWith(@"\personal-certificate", StringComparison.Ordinal)).SerialNumber);
+						Check.Equal("03A14016",
+							certificates.Single(certificate => certificate.SourcePath.EndsWith(@"\personal-certificate",
+								StringComparison.Ordinal)).SerialNumber);
 						var errors = (IList<ScanError>)FormField<DataGridView>(form, "errorsGrid").DataSource;
 						int scanColumn = grid.Columns.Cast<DataGridViewColumn>().Single(column => column.DataPropertyName == "ScanStatus").Index;
 						Check.Equal("Проверено частично; сертификатов: 3", grid.Rows[2].Cells[scanColumn].Value);

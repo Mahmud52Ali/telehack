@@ -40,7 +40,8 @@ namespace Telecom.App.Forms.Database
 			GridFactory.AddColumn(grid, "SerialNumber", "Серийный номер", 120);
 			GridFactory.AddColumn(grid, "OwnerName", "Владелец", 150);
 			GridFactory.AddColumn(grid, "CertificationAuthority", "Удостоверяющий центр", 150);
-			GridFactory.AddColumn(grid, "ComputerAddress", "IP компьютера", 105).ToolTipText = "Для локального сканирования здесь указано имя компьютера";
+			GridFactory.AddColumn(grid, "ComputerAddress", "IP компьютера", 105).ToolTipText =
+				"Для локального сканирования здесь указано имя компьютера";
 			GridFactory.AddColumn(grid, "SourcePath", "Путь к сертификату", 265);
 			GridFactory.AddColumn(grid, "CheckStatus", "Наличие", 240).MinimumWidth = 200;
 			GridFactory.AddColumn(grid, "CheckedAtUtc", "Проверено", 150).MinimumWidth = 125;

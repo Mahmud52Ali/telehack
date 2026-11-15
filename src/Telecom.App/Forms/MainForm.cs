@@ -21,9 +21,9 @@ namespace Telecom.App.Forms
 		private const int WmSettingChange = 0x001A;
 		private readonly ILogger logger;
 		private readonly OperationGate operations = new OperationGate();
-		private readonly RadioButton computersButton = new RadioButton { Text = "Компьютеры", Appearance = Appearance.Button, AutoSize = true, Checked = true };
-		private readonly RadioButton databaseButton = new RadioButton { Text = "База данных", Appearance = Appearance.Button, AutoSize = true };
-		private readonly RadioButton settingsButton = new RadioButton { Text = "Настройки", Appearance = Appearance.Button, AutoSize = true };
+		private readonly RadioButton computersButton = CreateNavigationButton("Компьютеры", true);
+		private readonly RadioButton databaseButton = CreateNavigationButton("База данных", false);
+		private readonly RadioButton settingsButton = CreateNavigationButton("Настройки", false);
 		private readonly ScanPage scanWorkspace;
 		private readonly DatabasePage databaseWorkspace;
 		private readonly SettingsPanel settingsPanel;
@@ -65,6 +65,12 @@ namespace Telecom.App.Forms
 			ApplyAppearance();
 			Shown += async (sender, args) => await scanWorkspace.InitializeAsync();
 			FormClosing += OnFormClosing;
+		}
+
+		// Создаёт кнопку навигации в виде переключателя: нажата может быть только одна.
+		private static RadioButton CreateNavigationButton(string text, bool selected)
+		{
+			return new RadioButton { Text = text, Appearance = Appearance.Button, AutoSize = true, Checked = selected };
 		}
 
 		// Показывает навигацию над тремя страницами; видна только выбранная.
