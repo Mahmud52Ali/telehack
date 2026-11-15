@@ -37,7 +37,8 @@ namespace Telecom.Core
 				return ScanErrorKind.AccessDenied;
 			}
 
-			if (code == 53 || code == 64 || code == 67 || code == 121 || code == 1231 || code == 1232)
+			if (code == 53 || code == 64 || code == 67 || code == 121 || code == 1231 || code == 1232
+				|| code == 1058 || code == 1062 || code == 1722 || code == 1753)
 			{
 				return ScanErrorKind.Unavailable;
 			}

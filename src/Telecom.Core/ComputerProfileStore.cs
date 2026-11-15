@@ -11,7 +11,7 @@ namespace Telecom.Core
 	{
 		public string FilePath { get; private set; }
 
-		// Принимает путь к локальным настройкам пользователя, не связанный с каталогом программы или Git.
+		// Запоминает полный путь к файлу списка ПК.
 		public ComputerProfileStore(string filePath)
 		{
 			FilePath = Path.GetFullPath(filePath);
@@ -40,10 +40,10 @@ namespace Telecom.Core
 			}
 
 			string version = document.Root == null ? null : (string)document.Root.Attribute("version");
-			if (document.Root == null || document.Root.Name != "computers" || (version != "1" && version != "2" && version != "3")
+			if (document.Root == null || document.Root.Name != "computers" || (version != "1" && version != "2" && version != "3" && version != "4")
 				|| document.Root.Attributes().Any(attribute => attribute.Name != "version"))
 			{
-				throw new InvalidDataException("Ожидался список компьютеров версии 1, 2 или 3.");
+				throw new InvalidDataException("Ожидался список компьютеров версии 1, 2, 3 или 4.");
 			}
 
 			var profiles = new List<ComputerProfile>();
@@ -51,9 +51,23 @@ namespace Telecom.Core
 			{
 				Guid id;
 				bool selected;
+				if (version == "4" && element.Name == "localComputer")
+				{
+					if (element.Attributes().Any(attribute => attribute.Name != "selected")
+						|| element.Nodes().OfType<XText>().Any(node => !string.IsNullOrWhiteSpace(node.Value))
+						|| element.Elements().Any(directory => directory.Name != "additionalDirectory" || directory.HasAttributes || directory.HasElements)
+						|| !bool.TryParse((string)element.Attribute("selected"), out selected))
+					{
+						throw new InvalidDataException("Некорректные настройки локального компьютера.");
+					}
+
+					profiles.Add(ComputerProfile.CreateLocal(selected, element.Elements("additionalDirectory").Select(directory => directory.Value)));
+					continue;
+				}
+
 				string addressAttribute = version == "1" ? "address" : "ipAddress";
 				if (element.Name != "computer" || element.Nodes().OfType<XText>().Any(node => !string.IsNullOrWhiteSpace(node.Value))
-					|| element.Elements().Any(directory => version != "3" || directory.Name != "additionalDirectory"
+					|| element.Elements().Any(directory => (version != "3" && version != "4") || directory.Name != "additionalDirectory"
 						|| directory.HasAttributes || directory.HasElements)
 					|| element.Attributes().Any(attribute => attribute.Name != "id" && attribute.Name != addressAttribute
 						&& (version == "1" || attribute.Name != "name") && attribute.Name != "userName" && attribute.Name != "selected")
@@ -79,9 +93,16 @@ namespace Telecom.Core
 		{
 			var items = new List<ComputerProfile>(profiles);
 			Validate(items);
-			var root = new XElement("computers", new XAttribute("version", "3"));
-			foreach (ComputerProfile profile in items)
+			var root = new XElement("computers", new XAttribute("version", "4"));
+			foreach (ComputerProfile profile in items.OrderBy(item => !item.IsLocal))
 			{
+				if (profile.IsLocal)
+				{
+					root.Add(new XElement("localComputer", new XAttribute("selected", profile.Selected),
+						profile.AdditionalDirectories.Select(path => new XElement("additionalDirectory", path))));
+					continue;
+				}
+
 				root.Add(new XElement("computer", new XAttribute("id", profile.Id), new XAttribute("ipAddress", profile.IpAddress),
 					new XAttribute("name", profile.DisplayName), new XAttribute("userName", profile.UserName), new XAttribute("selected", profile.Selected),
 					profile.AdditionalDirectories.Select(path => new XElement("additionalDirectory", path))));

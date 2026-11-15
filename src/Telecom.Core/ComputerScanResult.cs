@@ -32,7 +32,7 @@ namespace Telecom.Core
 		public int ScannedDirectories { get; internal set; }
 		public int SkippedFiles { get; internal set; }
 
-		// Объединяет результаты всех настроенных папок и определения версии на одном ПК.
+		// Объединяет сертификаты, ошибки и версию КриптоПро на одном ПК.
 		public ComputerScanResult(string computerName)
 		{
 			ComputerName = computerName;

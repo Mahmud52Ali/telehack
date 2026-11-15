@@ -14,6 +14,7 @@ namespace Telecom.Core
 		public string UserName { get; private set; }
 		public IList<string> AdditionalDirectories { get; private set; }
 		public bool Selected { get; set; }
+		public bool IsLocal { get; private set; }
 		public bool HasIpAddress { get { return IpAddress.Length > 0; } }
 		public bool HasUserName { get { return UserName.Length > 0; } }
 
@@ -30,16 +31,23 @@ namespace Telecom.Core
 		{
 		}
 
-		// Пустой адрес допускается только при загрузке записи, которой ещё нужно назначить IPv4.
-		private ComputerProfile(Guid id, string ipAddress, string displayName, string userName, bool selected,
-			IEnumerable<string> additionalDirectories, bool allowMissingAddress)
+		// Локальный профиль имеет постоянную подпись и не использует сетевой адрес или учётные данные.
+		public static ComputerProfile CreateLocal(bool selected, IEnumerable<string> additionalDirectories = null)
 		{
-			if (id == Guid.Empty)
+			return new ComputerProfile(Guid.Empty, string.Empty, "Этот компьютер", string.Empty, selected, additionalDirectories, true, true);
+		}
+
+		// Пустой адрес допускается у локального ПК и старых записей, ожидающих ввода IPv4.
+		private ComputerProfile(Guid id, string ipAddress, string displayName, string userName, bool selected,
+			IEnumerable<string> additionalDirectories, bool allowMissingAddress, bool isLocal = false)
+		{
+			if (id == Guid.Empty && !isLocal)
 			{
 				throw new ArgumentException("У компьютера должен быть непустой идентификатор.", "id");
 			}
 
 			Id = id;
+			IsLocal = isLocal;
 			IpAddress = allowMissingAddress && ipAddress == string.Empty ? string.Empty : NormalizeIpAddress(ipAddress);
 			DisplayName = (displayName ?? string.Empty).Trim();
 			if (DisplayName.Length > 256 || DisplayName.Any(char.IsControl))

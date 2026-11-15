@@ -13,6 +13,9 @@ namespace Telecom.Core
 		// Проверяет, является ли путь ссылкой, способной вывести обход за пределы выбранной папки.
 		bool IsReparsePoint(string path);
 
+		// Читает назначение ссылки без перехода по ней; неизвестный тип возвращает null.
+		string GetReparsePointTarget(string path);
+
 		// Читает содержимое одного файла сертификата.
 		byte[] ReadAllBytes(string filePath);
 	}

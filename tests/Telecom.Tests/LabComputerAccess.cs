@@ -16,6 +16,9 @@ namespace Telecom.Tests
 		internal readonly Dictionary<string, string> ProductVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		internal readonly Dictionary<string, Exception> VersionErrors = new Dictionary<string, Exception>(StringComparer.OrdinalIgnoreCase);
 		internal readonly List<string> DeniedPaths = new List<string>();
+		internal readonly HashSet<string> LinkedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		internal readonly Dictionary<string, string> LinkTargets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		internal readonly Dictionary<string, Exception> LinkTargetErrors = new Dictionary<string, Exception>(StringComparer.OrdinalIgnoreCase);
 		internal readonly List<string> ReadPaths = new List<string>();
 		internal Exception ConnectionFailure;
 		internal Action OnFileRead;
@@ -70,7 +73,25 @@ namespace Telecom.Tests
 		// Проверяет настоящий временный путь после имитации прав доступа.
 		public bool IsReparsePoint(string path)
 		{
-			return actual.IsReparsePoint(Map(path));
+			string localPath = Map(path);
+			return LinkedPaths.Contains(path) || LinkTargets.ContainsKey(path) || actual.IsReparsePoint(localPath);
+		}
+
+		// Моделирует назначение ссылки или отказ чтения её метаданных, не обращаясь к сети.
+		public string GetReparsePointTarget(string path)
+		{
+			string localPath = Map(path);
+			Exception failure;
+			if (LinkTargetErrors.TryGetValue(path, out failure))
+			{
+				throw failure;
+			}
+			string target;
+			if (LinkTargets.TryGetValue(path, out target))
+			{
+				return target;
+			}
+			return LinkedPaths.Contains(path) ? null : actual.GetReparsePointTarget(localPath);
 		}
 
 		// Читает публичный образец и позволяет запросить отмену после первого файла.

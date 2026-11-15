@@ -30,6 +30,8 @@ namespace Telecom.Tests
 				AddConfigurationTests(tests);
 				AddComputerTests(tests);
 				AddComputerProfileTests(tests);
+				AddLocalComputerTests(tests);
+				AddCertificateLocationTests(tests);
 				AddDatabaseTests(tests);
 				int failures = 0;
 				foreach (KeyValuePair<string, Action> test in tests)

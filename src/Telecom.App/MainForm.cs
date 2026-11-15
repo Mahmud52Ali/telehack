@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Data;
 using System.Data.Common;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -15,68 +17,134 @@ namespace Telecom.App
 {
 	public sealed class MainForm : Form
 	{
+		private const string CertificateExpiryField = "ExpiresAtUtc";
+		private const int WmSystemColorChange = 0x0015;
+		private const int WmSettingChange = 0x001A;
 		private readonly ILogger logger;
-		private readonly TextBox directoryInput = new TextBox();
 		private readonly DataGridView computersGrid = new DataGridView();
 		private readonly BindingList<ComputerListItem> computers = new BindingList<ComputerListItem>();
 		private readonly ComputerProfileStore profileStore;
 		private readonly string configurationFilePath;
+		private readonly string configurationTemplatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml");
 		private readonly WindowsCredentialStore credentialStore = new WindowsCredentialStore();
 		private readonly IComputerAccess computerAccess;
 		private readonly WindowsSmbConnection connection;
+		private readonly IMachineCertificateStore machineCertificateStore;
 		private readonly Button addComputerButton = new Button();
 		private readonly Button editComputerButton = new Button();
 		private readonly Button removeComputerButton = new Button();
 		private readonly Button connectButton = new Button();
-		private readonly TextBox configurationInput = new TextBox();
-		private readonly TabControl modeTabs = new TabControl();
-		private readonly Button browseButton = new Button();
+		private readonly Panel computersPanel = new Panel { Dock = DockStyle.Fill };
+		private readonly RadioButton computersButton = new RadioButton { Text = "Компьютеры", Appearance = Appearance.Button, AutoSize = true, Checked = true };
+		private readonly RadioButton databaseButton = new RadioButton { Text = "База данных", Appearance = Appearance.Button, AutoSize = true };
+		private readonly RadioButton settingsButton = new RadioButton { Text = "Настройки", Appearance = Appearance.Button, AutoSize = true };
+		private readonly TableLayoutPanel scanWorkspace = new TableLayoutPanel { Dock = DockStyle.Fill, Margin = Padding.Empty, ColumnCount = 1, RowCount = 4 };
+		private readonly TableLayoutPanel databaseWorkspace = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+		private readonly SettingsPanel settingsPanel;
 		private readonly Button scanButton = new Button();
 		private readonly Button cancelButton = new Button();
 		private readonly Label statusLabel = new Label();
 		private readonly DataGridView certificatesGrid = new DataGridView();
 		private readonly DataGridView errorsGrid = new DataGridView();
+		private readonly TabControl databaseTables = new AppearanceTabControl { Dock = DockStyle.Fill };
+		private readonly TabPage certificateLocationsPage = new TabPage("Сертификаты по компьютерам");
+		private readonly DataGridView databaseGrid = new DataGridView();
+		private readonly DataGridView certificateLocationsGrid = new DataGridView();
+		private readonly Button refreshDatabaseButton = new Button { Text = "Обновить" };
+		private readonly Button checkLocationsButton = new Button { Text = "Проверить наличие", AutoSize = true, Visible = false };
+		private readonly ToolStripMenuItem checkLocationMenuItem = new ToolStripMenuItem("Проверить наличие");
+		private readonly Label databaseStatusLabel = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
 		private CancellationTokenSource scanCancellation;
+		private CertificateRepository displayedCertificateRepository;
+		private bool databaseRefreshPending;
+		private bool deletingCertificate;
+		private bool checkingLocations;
 		private bool changingSelection;
 		private bool profilesLoaded;
 		private bool closeWhenIdle;
 
 		// Создаёт список ПК; подключение сохранённых компьютеров начинается после появления окна.
 		public MainForm(ILogger logger)
-			: this(logger, new ComputerProfileStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-				"Telecom", "computers.xml")), new WindowsFileSystem(), null)
+			: this(logger, new ComputerProfileStore(Path.Combine(Program.DataDirectory, "configs", "computers.xml")),
+				new WindowsFileSystem(), null, new WindowsMachineCertificateStore())
 		{
 		}
 
 		// Принимает хранилище и сетевые адаптеры для проверки полного сценария без настоящих ПК и паролей.
-		public MainForm(ILogger logger, ComputerProfileStore profileStore, IComputerAccess computerAccess, WindowsSmbConnection connection)
+		public MainForm(ILogger logger, ComputerProfileStore profileStore, IComputerAccess computerAccess, WindowsSmbConnection connection,
+			IMachineCertificateStore machineCertificateStore = null)
 		{
 			this.logger = logger;
 			this.profileStore = profileStore;
 			configurationFilePath = Path.Combine(Path.GetDirectoryName(profileStore.FilePath), "scan.config.xml");
 			this.computerAccess = computerAccess;
 			this.connection = connection ?? new WindowsSmbConnection(credentialStore);
+			this.machineCertificateStore = machineCertificateStore;
+			computers.Add(new ComputerListItem(ComputerProfile.CreateLocal(false)));
 			Text = "СКЗИ — сканирование сертификатов";
-			Font = new Font("Segoe UI", 9F);
-			AutoScaleMode = AutoScaleMode.Font;
+			WindowAppearance.Apply(this, AutoScaleMode.Dpi);
 			Size = new Size(1200, 850);
 			MinimumSize = new Size(1000, 700);
 			StartPosition = FormStartPosition.CenterScreen;
+			settingsPanel = new SettingsPanel(configurationFilePath, configurationTemplatePath, logger);
+			settingsPanel.ConfigurationChanged += (sender, args) => statusLabel.Text = "Настройки сканирования обновлены.";
+			settingsPanel.AppearanceChanged += (sender, args) => ApplyAppearance();
 			BuildLayout();
+			ApplyAppearance();
 			Shown += OnShown;
 			FormClosing += OnFormClosing;
 		}
 
-		// Раскладывает выбор режима, кнопки, статус и две таблицы без файлов дизайнера.
+		// Применяет сохранённый масштаб и разрешает системную тему в текущую палитру.
+		private void ApplyAppearance()
+		{
+			WindowAppearance.ApplyFont(this, settingsPanel.Appearance.FontPercent);
+			UpdateTheme();
+		}
+
+		// Обновляет палитру также у открытых диалогов приложения.
+		private void UpdateTheme()
+		{
+			bool dark = WindowAppearance.UseDarkTheme(settingsPanel.Appearance.Theme, logger);
+			WindowAppearance.ApplyTheme(this, dark);
+			foreach (Form dialog in OwnedForms)
+			{
+				WindowAppearance.ApplyTheme(dialog, dark);
+			}
+		}
+
+		// Подхватывает смену системной палитры из уведомлений Windows.
+		protected override void WndProc(ref Message message)
+		{
+			base.WndProc(ref message);
+			if (settingsPanel != null && IsHandleCreated && !Disposing && !IsDisposed
+				&& (message.Msg == WmSettingChange || message.Msg == WmSystemColorChange))
+			{
+				UpdateTheme();
+			}
+		}
+
+		// Показывает навигацию над рабочими областями компьютеров, базы данных и настроек.
 		private void BuildLayout()
 		{
-			var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), RowCount = 4, ColumnCount = 1 };
-			layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 285));
-			layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+			var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), RowCount = 2, ColumnCount = 1 };
 			layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 			layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-			BuildModes();
-			layout.Controls.Add(modeTabs, 0, 0);
+			var navigation = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = Padding.Empty, ColumnCount = 3, RowCount = 1 };
+			navigation.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+			navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+			navigation.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+			navigation.Controls.Add(computersButton, 0, 0);
+			navigation.Controls.Add(databaseButton, 1, 0);
+			navigation.Controls.Add(settingsButton, 2, 0);
+			layout.Controls.Add(navigation, 0, 0);
+
+			scanWorkspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
+			scanWorkspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+			scanWorkspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+			scanWorkspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+			BuildComputersPanel();
+			scanWorkspace.Controls.Add(computersPanel, 0, 0);
 
 			var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
 			scanButton.Text = "Сканировать";
@@ -88,14 +156,14 @@ namespace Telecom.App
 			cancelButton.Click += OnCancel;
 			actions.Controls.Add(scanButton);
 			actions.Controls.Add(cancelButton);
-			layout.Controls.Add(actions, 0, 1);
+			scanWorkspace.Controls.Add(actions, 0, 1);
 			AcceptButton = scanButton;
 
-			statusLabel.Text = "Добавьте компьютеры и отметьте их для подключения и сканирования.";
+			statusLabel.Text = "Отметьте этот компьютер или добавьте ПК сети для сканирования.";
 			statusLabel.AutoSize = true;
 			statusLabel.Dock = DockStyle.Fill;
 			statusLabel.Margin = new Padding(0, 0, 0, 10);
-			layout.Controls.Add(statusLabel, 0, 2);
+			scanWorkspace.Controls.Add(statusLabel, 0, 2);
 
 			ConfigureGrid(certificatesGrid);
 			AddColumn(certificatesGrid, "OwnerName", "Владелец", 110);
@@ -105,45 +173,571 @@ namespace Telecom.App
 			{
 				DataPropertyName = "IsCryptoProLicenseEmbedded", HeaderText = "Лицензия в сертификате", FillWeight = 55
 			});
-			AddColumn(certificatesGrid, "SourcePath", "Файл", 160);
+			AddColumn(certificatesGrid, "SourcePath", "Источник", 160);
 			ConfigureGrid(errorsGrid);
 			AddColumn(errorsGrid, "Kind", "Категория", 55);
 			AddColumn(errorsGrid, "Path", "Путь", 120);
 			AddColumn(errorsGrid, "Message", "Причина", 140);
 			errorsGrid.CellFormatting += OnErrorFormatting;
 
-			var tabs = new TabControl { Dock = DockStyle.Fill };
+			var tabs = new AppearanceTabControl { Dock = DockStyle.Fill };
 			var certificateTab = new TabPage("Сертификаты");
 			certificateTab.Controls.Add(certificatesGrid);
 			var errorTab = new TabPage("Ошибки");
 			errorTab.Controls.Add(errorsGrid);
 			tabs.TabPages.Add(certificateTab);
 			tabs.TabPages.Add(errorTab);
-			layout.Controls.Add(tabs, 0, 3);
+			scanWorkspace.Controls.Add(tabs, 0, 3);
+
+			var body = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+			body.Controls.Add(scanWorkspace);
+			BuildDatabaseWorkspace();
+			body.Controls.Add(databaseWorkspace);
+			body.Controls.Add(settingsPanel);
+			databaseWorkspace.Visible = false;
+			settingsPanel.Visible = false;
+			layout.Controls.Add(body, 0, 1);
 			Controls.Add(layout);
+			computersButton.CheckedChanged += OnWorkspaceChanged;
+			databaseButton.CheckedChanged += OnWorkspaceChanged;
+			settingsButton.CheckedChanged += OnWorkspaceChanged;
 		}
 
-		// Даёт выбрать сохранённые ПК и учётки, сохраняя ручную проверку одной папки.
-		private void BuildModes()
+		// Открывает выбранную область и перечитывает данные при переходе на вкладку базы.
+		private async void OnWorkspaceChanged(object sender, EventArgs args)
 		{
-			modeTabs.Dock = DockStyle.Fill;
-			var computerTab = new TabPage("Компьютеры");
-			var computerPanel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(6), ColumnCount = 3, RowCount = 3 };
-			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+			if (!((RadioButton)sender).Checked)
+			{
+				return;
+			}
+
+			scanWorkspace.Visible = computersButton.Checked;
+			databaseWorkspace.Visible = databaseButton.Checked;
+			settingsPanel.Visible = settingsButton.Checked;
+			SetScanning(scanCancellation != null);
+			if (settingsButton.Checked)
+			{
+				settingsPanel.RefreshFromDisk();
+			}
+			else
+			{
+				settingsPanel.HideConnectionString();
+			}
+
+			if (databaseButton.Checked)
+			{
+				await RefreshDatabase();
+			}
+		}
+
+		// Даёт переключаться между реестром и местами обнаружения сертификатов.
+		private void BuildDatabaseWorkspace()
+		{
+			ConfigureGrid(databaseGrid);
+			databaseGrid.AccessibleName = "Сохранённые сертификаты";
+			AddColumn(databaseGrid, "SerialNumber", "Серийный номер", 145);
+			const string timestampFormat = "dd.MM.yyyy HH:mm:ss.fff";
+			AddColumn(databaseGrid, "CreatedAt", "Внесён", 155).DefaultCellStyle.Format = timestampFormat;
+			AddColumn(databaseGrid, "UpdatedAt", "Обновлён", 155).DefaultCellStyle.Format = timestampFormat;
+			AddColumn(databaseGrid, "OwnerName", "Владелец", 165);
+			AddColumn(databaseGrid, "CertificationAuthority", "Удостоверяющий центр", 165);
+			AddColumn(databaseGrid, "CryptoProVersion", "Версия КриптоПро", 95).DefaultCellStyle.NullValue = "—";
+			databaseGrid.Columns.Add(new DataGridViewCheckBoxColumn
+			{
+				DataPropertyName = "IsCryptoProLicenseEmbedded", HeaderText = "Лицензия в сертификате", FillWeight = 95
+			});
+			AddDatabaseExpiryAndDeleteColumns(databaseGrid);
+
+			ConfigureGrid(certificateLocationsGrid);
+			certificateLocationsGrid.AccessibleName = "Сертификаты по компьютерам";
+			AddColumn(certificateLocationsGrid, "SerialNumber", "Серийный номер", 120);
+			AddColumn(certificateLocationsGrid, "OwnerName", "Владелец", 150);
+			AddColumn(certificateLocationsGrid, "CertificationAuthority", "Удостоверяющий центр", 150);
+			AddColumn(certificateLocationsGrid, "ComputerAddress", "IP компьютера", 105).ToolTipText = "Для локального сканирования здесь указано имя компьютера";
+			AddColumn(certificateLocationsGrid, "SourcePath", "Путь к сертификату", 265);
+			AddColumn(certificateLocationsGrid, "CheckStatus", "Наличие", 240).MinimumWidth = 200;
+			AddColumn(certificateLocationsGrid, "CheckedAtUtc", "Проверено", 150).MinimumWidth = 125;
+			certificateLocationsGrid.CellFormatting += OnLocationCheckFormatting;
+			var locationMenu = new ContextMenuStrip();
+			locationMenu.Items.Add(checkLocationMenuItem);
+			locationMenu.Opening += (sender, args) =>
+			{
+				locationMenu.Font = certificateLocationsGrid.Font;
+				UpdateLocationCheckButton();
+				args.Cancel = !checkLocationMenuItem.Enabled;
+			};
+			checkLocationMenuItem.Click += OnCheckLocation;
+			certificateLocationsGrid.ContextMenuStrip = locationMenu;
+			certificateLocationsGrid.MouseDown += (sender, args) =>
+			{
+				if (args.Button == MouseButtons.Right)
+				{
+					DataGridView.HitTestInfo hit = certificateLocationsGrid.HitTest(args.X, args.Y);
+					certificateLocationsGrid.ClearSelection();
+					certificateLocationsGrid.CurrentCell = hit.RowIndex < 0 ? null
+						: certificateLocationsGrid.Rows[hit.RowIndex].Cells[Math.Max(0, hit.ColumnIndex)];
+				}
+			};
+			certificateLocationsGrid.Disposed += (sender, args) => locationMenu.Dispose();
+			AddDatabaseExpiryAndDeleteColumns(certificateLocationsGrid);
+
+			var registryPage = new TabPage("Реестр сертификатов");
+			registryPage.Controls.Add(databaseGrid);
+			certificateLocationsPage.Controls.Add(certificateLocationsGrid);
+			databaseTables.TabPages.Add(registryPage);
+			databaseTables.TabPages.Add(certificateLocationsPage);
+			databaseTables.SelectedIndexChanged += async (sender, args) =>
+			{
+				UpdateLocationCheckButton();
+				await RefreshDatabase();
+			};
+
+			refreshDatabaseButton.Size = settingsButton.Size;
+			settingsButton.SizeChanged += (sender, args) => refreshDatabaseButton.Size = settingsButton.Size;
+			refreshDatabaseButton.Click += async (sender, args) => await RefreshDatabase();
+			checkLocationsButton.Click += OnCheckLocations;
+			var databaseActions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+			databaseActions.Controls.Add(checkLocationsButton);
+			databaseActions.Controls.Add(refreshDatabaseButton);
+
+			databaseWorkspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+			databaseWorkspace.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+			databaseWorkspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+			databaseWorkspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+			databaseWorkspace.Controls.Add(databaseStatusLabel, 0, 0);
+			databaseWorkspace.Controls.Add(databaseActions, 1, 0);
+			databaseWorkspace.Controls.Add(databaseTables, 0, 1);
+			databaseWorkspace.SetColumnSpan(databaseTables, 2);
+		}
+
+		// Добавляет дату окончания и действие удаления с подсказкой для текущей таблицы.
+		private void AddDatabaseExpiryAndDeleteColumns(DataGridView grid)
+		{
+			DataGridViewColumn expiration = AddColumn(grid, CertificateExpiryField, "Дата истечения", 155);
+			expiration.MinimumWidth = 125;
+			expiration.DefaultCellStyle.NullValue = "—";
+			grid.CellFormatting += OnCertificateExpiryFormatting;
+			grid.Columns.Add(new DataGridViewButtonColumn
+			{
+				HeaderText = "Удалить", Text = "×", UseColumnTextForButtonValue = true, Width = 75,
+				AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+				ToolTipText = grid == certificateLocationsGrid ? "Удалить выбранную запись о компьютере"
+					: "Удалить сертификат и записи о привязанных к нему компьютерах"
+			});
+			grid.CellContentClick += OnDeleteCertificate;
+		}
+
+		// Показывает срок в местном времени и окрашивает только ячейку с датой.
+		private void OnCertificateExpiryFormatting(object sender, DataGridViewCellFormattingEventArgs args)
+		{
+			var grid = (DataGridView)sender;
+			if (!(args.Value is DateTime) || grid.Columns[args.ColumnIndex].DataPropertyName != CertificateExpiryField)
+			{
+				return;
+			}
+
+			DateTime expiresAtUtc = DateTime.SpecifyKind((DateTime)args.Value, DateTimeKind.Utc);
+			args.Value = expiresAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+			args.FormattingApplied = true;
+
+			TimeSpan remaining = expiresAtUtc - DateTime.UtcNow;
+			if (remaining > TimeSpan.FromDays(30))
+			{
+				return;
+			}
+
+			bool expired = remaining <= TimeSpan.Zero;
+			if (SystemInformation.HighContrast)
+			{
+				return;
+			}
+
+			bool dark = WindowAppearance.IsDark(grid);
+			args.CellStyle.BackColor = dark
+				? (expired ? Color.FromArgb(75, 41, 47) : Color.FromArgb(62, 48, 31))
+				: (expired ? Color.MistyRose : Color.PeachPuff);
+			args.CellStyle.ForeColor = dark
+				? (expired ? Color.FromArgb(255, 174, 174) : Color.FromArgb(255, 218, 153))
+				: (expired ? Color.DarkRed : Color.SaddleBrown);
+			args.CellStyle.SelectionBackColor = args.CellStyle.BackColor;
+			args.CellStyle.SelectionForeColor = args.CellStyle.ForeColor;
+		}
+
+		// Выполняет один запрос за раз и повторяет его, если вкладку открыли снова во время загрузки.
+		private async Task RefreshDatabase()
+		{
+			if (!refreshDatabaseButton.Enabled)
+			{
+				databaseRefreshPending = true;
+				return;
+			}
+
+			SetDatabaseBusy(true);
+			try
+			{
+				await LoadDatabaseRows(null);
+			}
+			finally
+			{
+				if (!IsDisposed)
+				{
+					SetDatabaseBusy(false);
+				}
+			}
+		}
+
+		// Показывает итог отдельной проверки и её время в часовом поясе администратора.
+		private void OnLocationCheckFormatting(object sender, DataGridViewCellFormattingEventArgs args)
+		{
+			string field = certificateLocationsGrid.Columns[args.ColumnIndex].DataPropertyName;
+			if (field == "CheckStatus")
+			{
+				switch (args.Value is byte ? (CertificateLocationStatus)(byte)args.Value : 0)
+				{
+					case CertificateLocationStatus.Found: args.Value = "Найден"; break;
+					case CertificateLocationStatus.Missing: args.Value = "Не найден по этому пути"; break;
+					case CertificateLocationStatus.DifferentCertificate: args.Value = "Заменён другим сертификатом"; break;
+					case CertificateLocationStatus.Unverified: args.Value = "Не удалось проверить"; break;
+					default: args.Value = "Не проверялся"; break;
+				}
+				args.FormattingApplied = true;
+			}
+			else if (field == "CheckedAtUtc")
+			{
+				args.Value = args.Value is DateTime
+					? DateTime.SpecifyKind((DateTime)args.Value, DateTimeKind.Utc).ToLocalTime()
+						.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture)
+					: "—";
+				args.FormattingApplied = true;
+			}
+		}
+
+		private void SetDatabaseBusy(bool busy)
+		{
+			refreshDatabaseButton.Enabled = !busy;
+			UpdateLocationCheckButton();
+		}
+
+		// Включает проверку при открытом списке сохранённых путей, а во время работы даёт её отменить.
+		private void UpdateLocationCheckButton()
+		{
+			checkLocationsButton.Visible = databaseTables.SelectedTab == certificateLocationsPage;
+			checkLocationsButton.Text = checkingLocations ? "Отменить проверку" : "Проверить наличие";
+			var locations = certificateLocationsGrid.DataSource as DataTable;
+			checkLocationsButton.Enabled = checkingLocations ? !scanCancellation.IsCancellationRequested
+				: profilesLoaded && scanCancellation == null && refreshDatabaseButton.Enabled
+					&& displayedCertificateRepository != null && locations != null && locations.Rows.Count > 0;
+			checkLocationMenuItem.Enabled = !checkingLocations && checkLocationsButton.Enabled
+				&& certificateLocationsGrid.CurrentRow != null;
+		}
+
+		// Сопоставляет сохранённые места со списком ПК и проверяет их независимо от галочек сканирования.
+		private async void OnCheckLocations(object sender, EventArgs args)
+		{
+			if (checkingLocations)
+			{
+				scanCancellation.Cancel();
+				databaseStatusLabel.Text = "Отмена… Ожидание завершения текущего чтения.";
+				UpdateLocationCheckButton();
+				return;
+			}
+
+			await CheckLocations(null);
+		}
+
+		// Проверяет единственную находку, выбранную правой кнопкой мыши.
+		private async void OnCheckLocation(object sender, EventArgs args)
+		{
+			DataGridViewRow selected = certificateLocationsGrid.CurrentRow;
+			if (!checkingLocations && selected != null)
+			{
+				await CheckLocations(CreateLocationCheck(((DataRowView)selected.DataBoundItem).Row));
+			}
+		}
+
+		// Запускает отдельную проверку с общими правилами блокировки, отмены и обновления таблицы.
+		private async Task CheckLocations(CertificateLocationCheck selectedLocation)
+		{
+			var rows = certificateLocationsGrid.DataSource as DataTable;
+			CertificateRepository repository = displayedCertificateRepository;
+			if (repository == null || rows == null || rows.Rows.Count == 0 || !refreshDatabaseButton.Enabled || scanCancellation != null)
+			{
+				return;
+			}
+
+			var profiles = computers.Select(item => item.Profile).Where(profile => profile.IsLocal || profile.HasIpAddress)
+				.ToDictionary(profile => profile.IsLocal ? Environment.MachineName : profile.IpAddress, StringComparer.OrdinalIgnoreCase);
+			scanCancellation = new CancellationTokenSource();
+			CancellationToken token = scanCancellation.Token;
+			checkingLocations = true;
+			SetScanning(true);
+			SetDatabaseBusy(true);
+			try
+			{
+				logger.Info(selectedLocation == null ? "Начата проверка наличия всех сохранённых сертификатов."
+					: "Начата проверка наличия сертификата. Компьютер: " + selectedLocation.ComputerAddress
+						+ "; источник: " + selectedLocation.SourcePath + "; серийный номер: " + selectedLocation.SerialNumber);
+				string summary = await CheckLocationGroups(repository, profiles, selectedLocation, token);
+				if (!IsDisposed && !closeWhenIdle && databaseButton.Checked)
+				{
+					await LoadDatabaseRows(summary);
+				}
+			}
+			finally
+			{
+				checkingLocations = false;
+				SetDatabaseBusy(false);
+				FinishOperation();
+			}
+		}
+
+		// Сохраняет ключ и версию строки для защиты от её изменения во время проверки.
+		private static CertificateLocationCheck CreateLocationCheck(DataRow row)
+		{
+			return new CertificateLocationCheck((string)row["SerialNumber"], (string)row["ComputerAddress"],
+				(string)row["SourcePath"], (DateTime)row["CreatedAt"], (DateTime)row["UpdatedAt"]);
+		}
+
+		// Сохраняет завершённые проверки по одному ПК и показывает ход работы.
+		private async Task<string> CheckLocationGroups(CertificateRepository repository, IDictionary<string, ComputerProfile> profiles,
+			CertificateLocationCheck selectedLocation, CancellationToken token)
+		{
+			int checkedLocations = 0;
+			int savedLocations = 0;
+			try
+			{
+				ScanConfiguration configuration = await Task.Run(() => ScanConfiguration.Load(configurationFilePath), token);
+				var groups = await Task.Run(() => (selectedLocation == null
+						? repository.ReadLocations().Rows.Cast<DataRow>().Select(CreateLocationCheck)
+						: new[] { selectedLocation })
+					.GroupBy(location => location.ComputerAddress, StringComparer.OrdinalIgnoreCase).ToList(), token);
+				var checker = new CertificateLocationChecker(computerAccess, machineCertificateStore,
+					(profile, cancellation) => connection.Connect(profile, configuration.ConnectionTimeoutSeconds, cancellation), logger);
+				for (int index = 0; index < groups.Count; index++)
+				{
+					token.ThrowIfCancellationRequested();
+					IGrouping<string, CertificateLocationCheck> group = groups[index];
+					List<CertificateLocationCheck> locations = group.ToList();
+					ComputerProfile profile;
+					profiles.TryGetValue(group.Key, out profile);
+					databaseStatusLabel.Text = string.Format("Проверка компьютера {0} ({1} из {2})…", group.Key, index + 1, groups.Count);
+					savedLocations += await Task.Run(() =>
+					{
+						try
+						{
+							checker.CheckComputer(group.Key, profile, locations, token);
+						}
+						catch (OperationCanceledException)
+						{
+							if (!token.IsCancellationRequested)
+							{
+								throw;
+							}
+						}
+
+						return repository.SaveLocationChecks(locations.Where(location => location.CheckedAtUtc != default(DateTime)));
+					}, token);
+					checkedLocations += locations.Count(location => location.CheckedAtUtc != default(DateTime));
+					token.ThrowIfCancellationRequested();
+				}
+
+				string summary = string.Format("Проверка завершена. Сохранено результатов: {0} из {1}.", savedLocations, checkedLocations);
+				logger.Info(summary);
+				return summary;
+			}
+			catch (OperationCanceledException)
+			{
+				string summary = "Проверка отменена. Сохранено результатов: " + savedLocations + ".";
+				logger.Info(summary);
+				return summary;
+			}
+			catch (Exception exception)
+			{
+				logger.Error("Ошибка проверки наличия сертификатов.", exception);
+				return "Не удалось завершить проверку. " + exception.Message;
+			}
+		}
+
+		// Загружает таблицу для текущих настроек и связывает результат с его исходной базой.
+		private async Task LoadDatabaseRows(string actionStatus)
+		{
+			displayedCertificateRepository = null;
+			databaseGrid.DataSource = null;
+			certificateLocationsGrid.DataSource = null;
+			databaseStatusLabel.Text = "Загрузка записей…";
+			do
+			{
+				databaseRefreshPending = false;
+				bool showingLocations = databaseTables.SelectedTab == certificateLocationsPage;
+				DataGridView targetGrid = showingLocations ? certificateLocationsGrid : databaseGrid;
+				CertificateRepository repository = null;
+				DataTable certificates = null;
+				string status;
+				try
+				{
+					certificates = await Task.Run(() =>
+					{
+						ScanConfiguration configuration = ScanConfiguration.Load(configurationFilePath);
+						if (configuration.ConnectionString.Length == 0)
+						{
+							return null;
+						}
+
+						repository = new CertificateRepository(configuration.ConnectionString, logger);
+						return showingLocations ? repository.ReadLocations() : repository.ReadAll();
+					});
+					status = certificates == null
+						? "Укажите и сохраните строку подключения в разделе «Настройки → База данных»."
+						: "Записей: " + certificates.Rows.Count;
+				}
+				catch (Exception exception)
+				{
+					status = "Не удалось загрузить записи. " + exception.Message;
+					logger.Error("Не удалось прочитать сертификаты из базы данных.", exception);
+				}
+
+				if (!IsDisposed && databaseButton.Checked && !databaseRefreshPending)
+				{
+					displayedCertificateRepository = certificates == null ? null : repository;
+					targetGrid.DataSource = certificates;
+					databaseStatusLabel.Text = actionStatus == null ? status : actionStatus + " " + status;
+				}
+			} while (!IsDisposed && databaseButton.Checked && !closeWhenIdle && databaseRefreshPending);
+		}
+
+		// Подтверждает конкретную строку и удаляет её из той базы, из которой она была загружена.
+		private async void OnDeleteCertificate(object sender, DataGridViewCellEventArgs args)
+		{
+			var grid = (DataGridView)sender;
+			CertificateRepository repository = displayedCertificateRepository;
+			if (args.RowIndex < 0 || args.ColumnIndex < 0 || !(grid.Columns[args.ColumnIndex] is DataGridViewButtonColumn)
+				|| repository == null || !refreshDatabaseButton.Enabled)
+			{
+				return;
+			}
+
+			DataRow row = ((DataRowView)grid.Rows[args.RowIndex].DataBoundItem).Row;
+			string serialNumber = (string)row["SerialNumber"];
+			DateTime createdAt = (DateTime)row["CreatedAt"];
+			DateTime updatedAt = (DateTime)row["UpdatedAt"];
+			string computerAddress = null;
+			string sourcePath = null;
+			int remainingLocations = 0;
+			string deletionDetails = "Сертификат и записи обо всех привязанных к нему компьютерах будут удалены из базы данных.";
+			if (grid == certificateLocationsGrid)
+			{
+				computerAddress = (string)row["ComputerAddress"];
+				sourcePath = (string)row["SourcePath"];
+				string[] remainingComputers = row.Table.Rows.Cast<DataRow>()
+					.Where(location => location != row && (string)location["SerialNumber"] == serialNumber)
+					.Select(location => (string)location["ComputerAddress"]).ToArray();
+				remainingLocations = remainingComputers.Length;
+				deletionDetails = remainingLocations == 0
+					? "Это последний компьютер, привязанный к сертификату под серийным номером " + serialNumber
+						+ ". При удалении исчезнет запись как о компьютере, так и о сертификате в обеих таблицах."
+						+ "\r\n\r\nКомпьютер " + computerAddress
+					: "Будет удалена запись о компьютере для выбранного пути. Сертификат останется в реестре."
+						+ "\r\nКомпьютер " + computerAddress + ", привязанный к сертификату с серийным номером " + serialNumber + ".";
+				deletionDetails += "\r\n\r\n" + sourcePath;
+				if (remainingLocations > 0)
+				{
+					deletionDetails += "\r\n\r\nОставшиеся компьютеры\r\n" + string.Join(", ", remainingComputers.Distinct(StringComparer.OrdinalIgnoreCase));
+				}
+			}
+
+			using (var dialog = new DeleteCertificateDialog((string)row["OwnerName"], serialNumber, deletionDetails))
+			{
+				WindowAppearance.ApplyToDialog(dialog, this, settingsPanel.Appearance.FontPercent);
+				if (dialog.ShowDialog(this) != DialogResult.OK)
+				{
+					return;
+				}
+			}
+
+			deletingCertificate = true;
+			SetDatabaseBusy(true);
+			databaseStatusLabel.Text = "Удаление записи…";
+			try
+			{
+				string status = await Task.Run(() => DeleteCertificate(repository, serialNumber, createdAt, updatedAt,
+					computerAddress, sourcePath, remainingLocations));
+				if (!IsDisposed && !closeWhenIdle && databaseButton.Checked)
+				{
+					await LoadDatabaseRows(status);
+				}
+			}
+			finally
+			{
+				deletingCertificate = false;
+				if (!IsDisposed)
+				{
+					SetDatabaseBusy(false);
+					CloseIfIdle();
+				}
+			}
+		}
+
+		// Выполняет запрос и записывает исход удаления вместе с учётной записью оператора.
+		private string DeleteCertificate(CertificateRepository repository, string serialNumber, DateTime createdAt, DateTime updatedAt,
+			string computerAddress, string sourcePath, int remainingLocations)
+		{
+			string auditDetails = string.Format("Серийный номер: {0}. Оператор: {1}\\{2}.",
+				serialNumber, Environment.UserDomainName, Environment.UserName);
+			string status;
+			Exception deletionError = null;
+			try
+			{
+				if (computerAddress == null)
+				{
+					status = repository.TryDelete(serialNumber, createdAt, updatedAt)
+						? "Запись удалена." : "Запись уже удалена или обновлена с момента загрузки.";
+				}
+				else
+				{
+					auditDetails += " Компьютер: " + computerAddress + ". Путь: " + sourcePath + ".";
+					bool deleted = repository.TryDeleteLocation(serialNumber, createdAt, updatedAt, computerAddress, sourcePath, remainingLocations);
+					status = !deleted ? "Данные изменились. Проверьте список и подтвердите удаление снова."
+						: remainingLocations == 0 ? "Записи о компьютере и сертификате удалены из базы данных."
+						: "Запись о компьютере для выбранного пути удалена. Сертификат остаётся в реестре.";
+				}
+			}
+			catch (Exception exception)
+			{
+				status = "Не удалось удалить запись. Подробности в журнале.";
+				deletionError = exception;
+			}
+
+			try
+			{
+				if (deletionError == null)
+				{
+					logger.Info(status + " " + auditDetails);
+				}
+				else
+				{
+					logger.Error("Ошибка удаления записи из базы данных. " + auditDetails, deletionError);
+				}
+			}
+			catch (Exception loggingError)
+			{
+				Console.Error.WriteLine(deletionError);
+				Console.Error.WriteLine(loggingError);
+				status = (deletionError == null ? status : "Не удалось удалить запись. " + deletionError.Message)
+					+ " Журнал недоступен.";
+			}
+
+			return status;
+		}
+
+		// Показывает локальный ПК первым в общем списке с удалёнными компьютерами.
+		private void BuildComputersPanel()
+		{
+			var computerPanel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(0, 6, 0, 6), ColumnCount = 1, RowCount = 2 };
 			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-			computerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-			computerPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 			computerPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 			computerPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-			computerPanel.Controls.Add(new Label { Text = "Конфигурация", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-			configurationInput.Dock = DockStyle.Fill;
-			configurationInput.AccessibleName = "Файл конфигурации";
-			configurationInput.Text = configurationFilePath;
-			computerPanel.Controls.Add(configurationInput, 1, 0);
-			var configButton = new Button { Text = "Обзор…", AutoSize = true };
-			configButton.Click += OnBrowseConfiguration;
-			computerPanel.Controls.Add(configButton, 2, 0);
 			ConfigureGrid(computersGrid);
+			computersGrid.Margin = new Padding(0, 3, 0, 3);
 			computersGrid.ReadOnly = false;
 			computersGrid.MultiSelect = false;
 			computersGrid.AccessibleName = "Компьютеры для подключения и сканирования";
@@ -166,44 +760,22 @@ namespace Telecom.App
 			computersGrid.DataSource = computers;
 			computersGrid.CurrentCellDirtyStateChanged += OnComputerSelectionDirty;
 			computersGrid.CellValueChanged += OnComputerSelectionChanged;
-			computerPanel.Controls.Add(computersGrid, 0, 1);
-			computerPanel.SetColumnSpan(computersGrid, 3);
-			var computerActions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+			computersGrid.SelectionChanged += OnComputerRowChanged;
+			computerPanel.Controls.Add(computersGrid, 0, 0);
+			var computerActions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 3, 0, 3) };
+			addComputerButton.Margin = new Padding(0, 3, 3, 3);
 			AddComputerAction(computerActions, addComputerButton, "Добавить", OnAddComputer);
 			AddComputerAction(computerActions, editComputerButton, "Изменить", OnEditComputer);
 			AddComputerAction(computerActions, removeComputerButton, "Удалить", OnRemoveComputer);
 			AddComputerAction(computerActions, connectButton, "Подключить выбранные", OnConnect);
-			computerPanel.Controls.Add(computerActions, 0, 2);
-			computerPanel.SetColumnSpan(computerActions, 3);
-			computerTab.Controls.Add(computerPanel);
-
-			var directoryTab = new TabPage("Папка");
-			var pathPanel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6), ColumnCount = 2, RowCount = 2 };
-			pathPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-			pathPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-			var label = new Label { Text = "Папка с сертификатами (включая вложенные папки)", AutoSize = true };
-			pathPanel.Controls.Add(label, 0, 0);
-			pathPanel.SetColumnSpan(label, 2);
-			directoryInput.Dock = DockStyle.Fill;
-			directoryInput.AccessibleName = "Папка с сертификатами";
-			browseButton.Text = "Обзор…";
-			browseButton.AutoSize = true;
-			browseButton.Click += OnBrowse;
-			pathPanel.Controls.Add(directoryInput, 0, 1);
-			pathPanel.Controls.Add(browseButton, 1, 1);
-			directoryTab.Controls.Add(pathPanel);
-			modeTabs.TabPages.Add(computerTab);
-			modeTabs.TabPages.Add(directoryTab);
-			modeTabs.SelectedIndexChanged += OnModeChanged;
+			computerPanel.Controls.Add(computerActions, 0, 1);
+			computersPanel.Controls.Add(computerPanel);
 		}
 
-		// Ручное сканирование папки остаётся доступно и при повреждённом списке ПК.
-		private void OnModeChanged(object sender, EventArgs args)
+		// Локальную строку можно редактировать, но удаление доступно только для удалённых ПК.
+		private void OnComputerRowChanged(object sender, EventArgs args)
 		{
-			if (scanCancellation == null)
-			{
-				SetScanning(false);
-			}
+			UpdateComputerActions();
 		}
 
 		// Добавляет действие над списком ПК без отдельной панели настроек.
@@ -224,7 +796,14 @@ namespace Telecom.App
 				changingSelection = true;
 				foreach (ComputerProfile profile in profileStore.Load())
 				{
-					computers.Add(new ComputerListItem(profile));
+					if (profile.IsLocal)
+					{
+						computers[0] = new ComputerListItem(profile);
+					}
+					else
+					{
+						computers.Add(new ComputerListItem(profile));
+					}
 				}
 
 				profilesLoaded = true;
@@ -240,66 +819,32 @@ namespace Telecom.App
 				SetScanning(false);
 			}
 
-			if (configurationReady && profilesLoaded && computers.Any(item => item.Selected))
+			if (configurationReady && profilesLoaded && computers.Any(item => item.Selected && !item.Profile.IsLocal))
 			{
 				await RunComputers(false);
 			}
 		}
 
-		// Готовит пользовательский XML перед автоподключением и оставляет окно доступным при ошибке.
+		// Готовит рабочий XML перед автоподключением и направляет к настройкам при ошибке.
 		private bool PrepareConfiguration()
 		{
 			try
 			{
-				InitializeUserConfiguration(configurationFilePath, AppDomain.CurrentDomain.BaseDirectory);
+				bool created = ScanConfiguration.CreateFromTemplate(configurationFilePath, configurationTemplatePath);
+				ScanConfiguration.Load(configurationFilePath);
+				if (created)
+				{
+					logger.Info("Создан рабочий файл конфигурации из шаблона: " + configurationFilePath);
+					statusLabel.Text = "Созданы настройки первого запуска. Строку подключения можно указать в «Настройках».";
+				}
+
 				return true;
 			}
 			catch (Exception exception)
 			{
-				Program.ShowError("Не удалось создать конфигурацию сканирования: " + configurationFilePath, exception);
-				statusLabel.Text = "Проверьте доступ к файлу конфигурации или выберите XML через «Обзор».";
+				Program.ShowError("Не удалось подготовить конфигурацию сканирования: " + configurationFilePath, exception);
+				statusLabel.Text = "Откройте «Настройки → Файлы и журнал», чтобы загрузить или восстановить конфигурацию.";
 				return false;
-			}
-		}
-
-		// При первом запуске переносит настройки старой сборки или копирует штатный шаблон.
-		private static void InitializeUserConfiguration(string configurationPath, string applicationDirectory)
-		{
-			if (File.Exists(configurationPath))
-			{
-				return;
-			}
-
-			Directory.CreateDirectory(Path.GetDirectoryName(configurationPath));
-			string temporaryPath = configurationPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-			try
-			{
-				try
-				{
-					File.Copy(Path.Combine(applicationDirectory, "scan.config.xml"), temporaryPath);
-				}
-				catch (FileNotFoundException)
-				{
-					File.Copy(Path.Combine(applicationDirectory, "scan.config.template.xml"), temporaryPath);
-				}
-
-				File.SetAttributes(temporaryPath, FileAttributes.Normal);
-				File.Move(temporaryPath, configurationPath);
-			}
-			catch (IOException)
-			{
-				// Другой экземпляр приложения мог создать пользовательский конфиг одновременно.
-				if (!File.Exists(configurationPath))
-				{
-					throw;
-				}
-			}
-			finally
-			{
-				if (File.Exists(temporaryPath))
-				{
-					File.Delete(temporaryPath);
-				}
 			}
 		}
 
@@ -335,6 +880,8 @@ namespace Telecom.App
 				changingSelection = false;
 				Program.ShowError("Не удалось сохранить выбор компьютеров.", exception);
 			}
+
+			UpdateComputerActions();
 		}
 
 		// Сохраняет новый ПК и сразу подключает отмеченные компьютеры.
@@ -350,7 +897,7 @@ namespace Telecom.App
 		private async void OnEditComputer(object sender, EventArgs args)
 		{
 			ComputerListItem item = CurrentComputer();
-			if (item != null && EditComputer(item))
+			if (item != null && EditComputer(item) && !item.Profile.IsLocal)
 			{
 				await RunComputers(false);
 			}
@@ -360,7 +907,7 @@ namespace Telecom.App
 		private void OnRemoveComputer(object sender, EventArgs args)
 		{
 			ComputerListItem item = CurrentComputer();
-			if (item == null)
+			if (item == null || item.Profile.IsLocal)
 			{
 				return;
 			}
@@ -392,6 +939,7 @@ namespace Telecom.App
 		{
 			using (var dialog = new ComputerProfileDialog(previous == null ? null : previous.Profile))
 			{
+				WindowAppearance.ApplyToDialog(dialog, this, settingsPanel.Appearance.FontPercent);
 				if (dialog.ShowDialog(this) != DialogResult.OK)
 				{
 					return false;
@@ -408,14 +956,18 @@ namespace Telecom.App
 						profiles.Add(profile);
 					}
 					ComputerProfileStore.Validate(profiles);
-					NetworkCredential retained = dialog.KeepPreviousPassword ? credentialStore.Read(previous.Profile.Id) : null;
-					if (retained != null && !string.Equals(retained.UserName, profile.UserName, StringComparison.OrdinalIgnoreCase))
+					if (!profile.IsLocal)
 					{
-						throw new InvalidOperationException("Сохранённая учётная запись изменилась. Введите пароль заново.");
+						NetworkCredential retained = dialog.KeepPreviousPassword ? credentialStore.Read(previous.Profile.Id) : null;
+						if (retained != null && !string.Equals(retained.UserName, profile.UserName, StringComparison.OrdinalIgnoreCase))
+						{
+							throw new InvalidOperationException("Сохранённая учётная запись изменилась. Введите пароль заново.");
+						}
+
+						credentialStore.Save(profile.Id, profile.UserName, retained == null ? dialog.Password : retained.Password);
+						secretSaved = true;
 					}
 
-					credentialStore.Save(profile.Id, profile.UserName, retained == null ? dialog.Password : retained.Password);
-					secretSaved = true;
 					profileStore.Save(profiles);
 					profileSaved = true;
 					changingSelection = true;
@@ -444,6 +996,7 @@ namespace Telecom.App
 				finally
 				{
 					changingSelection = false;
+					UpdateComputerActions();
 				}
 			}
 		}
@@ -459,9 +1012,8 @@ namespace Telecom.App
 				}
 				catch (Exception exception)
 				{
-					logger.Error("Не удалось удалить прежнюю запись учётных данных для " + profile.DisplayName + " (" + profile.IpAddress + ")", exception);
 					Program.ShowError("Список ПК сохранён, но прежнюю запись Telecom/Computer/" + profile.Id.ToString("N")
-						+ " нужно удалить из диспетчера учётных данных вручную.", exception);
+						+ " для " + profile.DisplayName + " (" + profile.IpAddress + ") нужно удалить из диспетчера учётных данных вручную.", exception);
 				}
 			}
 		}
@@ -486,106 +1038,36 @@ namespace Telecom.App
 			grid.RowHeadersVisible = false;
 			grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 			grid.BackgroundColor = SystemColors.Window;
+			grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
 		}
 
 		// Добавляет столбец с привязкой к открытому свойству модели.
-		private static void AddColumn(DataGridView grid, string property, string title, float weight)
+		private static DataGridViewTextBoxColumn AddColumn(DataGridView grid, string property, string title, float weight)
 		{
-			grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = property, HeaderText = title, FillWeight = weight });
+			var column = new DataGridViewTextBoxColumn { DataPropertyName = property, HeaderText = title, FillWeight = weight };
+			grid.Columns.Add(column);
+			return column;
 		}
 
-		// Позволяет выбрать папку без ручного ввода пути.
-		private void OnBrowse(object sender, EventArgs args)
-		{
-			using (var dialog = new FolderBrowserDialog { Description = "Выберите папку с сертификатами", ShowNewFolderButton = false })
-			{
-				if (dialog.ShowDialog(this) == DialogResult.OK)
-				{
-					directoryInput.Text = dialog.SelectedPath;
-				}
-			}
-		}
-
-		// Выбирает существующий XML-файл; содержимое будет проверено непосредственно перед запуском.
-		private void OnBrowseConfiguration(object sender, EventArgs args)
-		{
-			using (var dialog = new OpenFileDialog
-			{
-				Filter = "XML-конфигурация (*.xml)|*.xml|Все файлы (*.*)|*.*",
-				CheckFileExists = true,
-				InitialDirectory = Path.GetDirectoryName(configurationFilePath)
-			})
-			{
-				if (dialog.ShowDialog(this) == DialogResult.OK)
-				{
-					configurationInput.Text = dialog.FileName;
-				}
-			}
-		}
-
-		// Выполняет чтение в фоне и возвращает результаты в поток интерфейса.
+		// Сканирует выбранные локальный и удалённые ПК в фоне.
 		private async void OnScan(object sender, EventArgs args)
 		{
-			if (modeTabs.SelectedIndex == 0)
-			{
-				await RunComputers(true);
-				return;
-			}
-
-			string source = directoryInput.Text.Trim();
-			if (source.Length == 0)
-			{
-				statusLabel.Text = "Укажите папку для проверки.";
-				directoryInput.Focus();
-				return;
-			}
-
-			scanCancellation = new CancellationTokenSource();
-			SetScanning(true);
-			statusLabel.Text = "Проверка… Время чтения сетевых ресурсов зависит от их доступности.";
-			certificatesGrid.DataSource = null;
-			errorsGrid.DataSource = null;
-			try
-			{
-				CancellationToken token = scanCancellation.Token;
-				var scanner = new DirectoryScanner(new WindowsFileSystem(), new CertificateParser(), logger);
-				DirectoryScanResult result = await Task.Run(() => scanner.Scan(source, token));
-				if (!IsDisposed)
-				{
-					certificatesGrid.DataSource = result.Certificates;
-					errorsGrid.DataSource = result.Errors;
-					string state = result.Cancelled ? "Отменено" : result.Errors.Count > 0 ? "Завершено с ошибками" : "Папка проверена";
-					statusLabel.Text = string.Format("{0}. Сертификатов: {1}. Ошибок: {2}. Пропущено файлов других форматов: {3}.",
-						state, result.Certificates.Count, result.Errors.Count, result.SkippedFiles);
-				}
-			}
-			catch (Exception exception)
-			{
-				Program.ShowError("Не удалось завершить сканирование.", exception);
-				if (!IsDisposed)
-				{
-					statusLabel.Text = "Ошибка сканирования. Подробности — в журнале telecom.log рядом с программой.";
-				}
-			}
-			finally
-			{
-				FinishOperation();
-			}
+			await RunComputers(true);
 		}
 
 		// Сначала подключает выбранные ПК, затем сканирует доступные; сбой одной учётки не останавливает остальные.
 		private async Task RunComputers(bool scan)
 		{
-			if (scanCancellation != null || !profilesLoaded)
+			if (scanCancellation != null || !profilesLoaded || !computersButton.Checked)
 			{
 				return;
 			}
 
 			computersGrid.EndEdit();
-			List<ComputerListItem> selected = computers.Where(item => item.Selected).ToList();
+			List<ComputerListItem> selected = computers.Where(item => item.Selected && (scan || !item.Profile.IsLocal)).ToList();
 			if (selected.Count == 0)
 			{
-				statusLabel.Text = "Отметьте хотя бы один компьютер галочкой.";
+				statusLabel.Text = scan ? "Отметьте хотя бы один компьютер галочкой." : "Отметьте удалённые компьютеры для подключения.";
 				return;
 			}
 
@@ -597,10 +1079,10 @@ namespace Telecom.App
 			errorsGrid.DataSource = errors;
 			foreach (ComputerListItem item in selected)
 			{
-				item.ConnectionStatus = "Ожидание подключения";
+				item.ConnectionStatus = item.Profile.IsLocal ? "Локально" : "Ожидание подключения";
 				if (scan)
 				{
-					item.ScanStatus = "Ожидание подключения";
+					item.ScanStatus = "Ожидание сканирования";
 					item.CryptoProVersion = string.Empty;
 					item.DatabaseStatus = "Не записано";
 				}
@@ -614,12 +1096,17 @@ namespace Telecom.App
 
 			try
 			{
-				string configurationPath = configurationInput.Text.Trim();
-				ScanConfiguration configuration = await Task.Run(() => ScanConfiguration.Load(configurationPath), token);
+				ScanConfiguration configuration = await Task.Run(() => ScanConfiguration.Load(configurationFilePath), token);
 				var connected = new List<ComputerListItem>();
 				foreach (ComputerListItem item in selected)
 				{
 					token.ThrowIfCancellationRequested();
+					if (item.Profile.IsLocal)
+					{
+						connected.Add(item);
+						continue;
+					}
+
 					item.ConnectionStatus = "Подключение…";
 					RefreshComputers();
 					statusLabel.Text = "Подключение к " + item.Description + "…";
@@ -664,7 +1151,8 @@ namespace Telecom.App
 						RefreshComputers();
 						statusLabel.Text = "Сканирование " + item.Description + "…";
 						ScanConfiguration computerConfiguration = configuration.WithAdditionalDirectories(item.Profile.AdditionalDirectories);
-						ComputerScanResult result = await Task.Run(() => scanner.Scan(item.IpAddress, computerConfiguration, token), token);
+						ComputerScanResult result = await Task.Run(() => scanner.ScanProfile(item.Profile, computerConfiguration,
+							machineCertificateStore, token), token);
 						foreach (CertificateInfo certificate in result.Certificates)
 						{
 							certificates.Add(certificate);
@@ -694,8 +1182,10 @@ namespace Telecom.App
 					}
 				}
 
-				statusLabel.Text = string.Format("Подключено ПК: {0} из {1}. {2}Ошибок подключения и чтения: {3}.{4}", connected.Count, selected.Count,
-					scan ? "Обработано ПК: " + completed + "; сертификатов: " + certificates.Count + ". " : string.Empty, errors.Count,
+				string summary = scan
+					? string.Format("Обработано ПК: {0} из {1}; сертификатов: {2}. ", completed, selected.Count, certificates.Count)
+					: string.Format("Подключено удалённых ПК: {0} из {1}. ", connected.Count, selected.Count);
+				statusLabel.Text = summary + string.Format("Ошибок подключения и чтения: {0}.{1}", errors.Count,
 					databaseFailures == 0 ? string.Empty : " Ошибок записи в БД: " + databaseFailures + ".");
 			}
 			catch (OperationCanceledException)
@@ -705,7 +1195,7 @@ namespace Telecom.App
 					item.ConnectionStatus = "Подключение отменено";
 				}
 
-				foreach (ComputerListItem item in selected.Where(value => value.ScanStatus == "Ожидание подключения" || value.ScanStatus == "Сканирование…"))
+				foreach (ComputerListItem item in selected.Where(value => value.ScanStatus == "Ожидание сканирования" || value.ScanStatus == "Сканирование…"))
 				{
 					item.ScanStatus = "Отменено";
 				}
@@ -717,7 +1207,7 @@ namespace Telecom.App
 			catch (Exception exception)
 			{
 				Program.ShowError("Не удалось обработать выбранные компьютеры.", exception);
-				statusLabel.Text = "Ошибка. Подробности — в журнале telecom.log рядом с программой.";
+				statusLabel.Text = "Ошибка. Подробности в " + Program.ErrorLogFilePath + ".";
 			}
 			finally
 			{
@@ -750,7 +1240,7 @@ namespace Telecom.App
 				CertificateSaveResult saved = await Task.Run(() =>
 				{
 					var repository = new CertificateRepository(configuration.ConnectionString, logger);
-					return repository.Save(result.Certificates, result.CryptoProVersion);
+					return repository.Save(result.Certificates, result.CryptoProVersion, result.ComputerName);
 				}, token);
 				item.DatabaseStatus = string.Format("Добавлено: {0}, обновлено: {1}", saved.Inserted, saved.Updated);
 				return true;
@@ -787,8 +1277,15 @@ namespace Telecom.App
 			scanCancellation.Dispose();
 			scanCancellation = null;
 			SetScanning(false);
-			if (closeWhenIdle)
+			CloseIfIdle();
+		}
+
+		// Закрывает окно после завершения сканирования и подтверждённого удаления.
+		private void CloseIfIdle()
+		{
+			if (closeWhenIdle && scanCancellation == null && !deletingCertificate)
 			{
+				closeWhenIdle = false;
 				Close();
 			}
 		}
@@ -804,18 +1301,27 @@ namespace Telecom.App
 			}
 		}
 
-		// Не позволяет запустить второй обход или изменить путь во время текущей проверки.
+		// Блокирует новый обход и редактирование настроек до конца текущей проверки.
 		private void SetScanning(bool scanning)
 		{
-			modeTabs.Enabled = !scanning;
-			scanButton.Enabled = !scanning && (profilesLoaded || modeTabs.SelectedIndex != 0);
+			computersPanel.Enabled = !scanning;
+			settingsButton.Enabled = !scanning;
+			scanButton.Enabled = !scanning && profilesLoaded && computersButton.Checked;
+			AcceptButton = scanButton.Enabled ? scanButton : null;
 			addComputerButton.Enabled = !scanning && profilesLoaded;
-			editComputerButton.Enabled = !scanning && profilesLoaded;
-			removeComputerButton.Enabled = !scanning && profilesLoaded;
-			connectButton.Enabled = !scanning && profilesLoaded;
-			browseButton.Enabled = !scanning;
-			directoryInput.Enabled = !scanning;
-			cancelButton.Enabled = scanning;
+			UpdateComputerActions();
+			cancelButton.Enabled = scanning && !checkingLocations && !scanCancellation.IsCancellationRequested;
+			UpdateLocationCheckButton();
+		}
+
+		// Согласует действия с текущей строкой и исключает локальный ПК из сетевого подключения.
+		private void UpdateComputerActions()
+		{
+			bool enabled = scanCancellation == null && profilesLoaded;
+			ComputerListItem current = CurrentComputer();
+			editComputerButton.Enabled = enabled && current != null;
+			removeComputerButton.Enabled = enabled && current != null && !current.Profile.IsLocal;
+			connectButton.Enabled = enabled && computers.Any(item => item.Selected && !item.Profile.IsLocal);
 		}
 
 		// Переводит технический итог проверки ПК в понятную подпись.
@@ -823,10 +1329,10 @@ namespace Telecom.App
 		{
 			switch (status)
 			{
-				case ComputerScanStatus.Complete: return "Настроенные папки проверены";
+				case ComputerScanStatus.Complete: return "Сканирование завершено";
 				case ComputerScanStatus.Partial: return "Проверено частично";
 				case ComputerScanStatus.AccessDenied: return "Нет прав доступа";
-				case ComputerScanStatus.Unavailable: return "Сетевой доступ SMB недоступен";
+				case ComputerScanStatus.Unavailable: return "Сетевой доступ недоступен";
 				case ComputerScanStatus.Cancelled: return "Проверка отменена";
 				default: return "Не удалось проверить настроенные папки";
 			}
@@ -852,7 +1358,7 @@ namespace Telecom.App
 				switch ((ScanErrorKind)args.Value)
 				{
 					case ScanErrorKind.AccessDenied: args.Value = "Нет доступа"; break;
-					case ScanErrorKind.Unavailable: args.Value = "Нет связи SMB"; break;
+					case ScanErrorKind.Unavailable: args.Value = "Ресурс недоступен"; break;
 					case ScanErrorKind.NotFound: args.Value = "Не найдено"; break;
 					case ScanErrorKind.InvalidData: args.Value = "Некорректные данные"; break;
 					default: args.Value = "Ошибка чтения"; break;
@@ -870,7 +1376,19 @@ namespace Telecom.App
 				scanCancellation.Cancel();
 				closeWhenIdle = true;
 				args.Cancel = true;
-				statusLabel.Text = "Закрытие… Ожидание текущего обращения к Windows.";
+				Label activeStatus = checkingLocations ? databaseStatusLabel : statusLabel;
+				activeStatus.Text = "Закрытие… Ожидание текущего обращения к Windows.";
+			}
+			else if (deletingCertificate)
+			{
+				closeWhenIdle = true;
+				args.Cancel = true;
+				databaseStatusLabel.Text = "Закрытие… Ожидание ответа базы данных.";
+			}
+			else if (args.CloseReason == CloseReason.UserClosing && settingsPanel.HasUnsavedChanges)
+			{
+				args.Cancel = MessageBox.Show(this, "Закрыть приложение без сохранения изменений настроек?", "Настройки",
+					MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes;
 			}
 		}
 
@@ -879,17 +1397,22 @@ namespace Telecom.App
 			public ComputerProfile Profile { get; private set; }
 			public bool Selected { get { return Profile.Selected; } set { Profile.Selected = value; } }
 			public bool SavedSelection { get; set; }
-			public string IpAddress { get { return Profile.IpAddress; } }
+			public string IpAddress { get { return Profile.IsLocal ? "—" : Profile.IpAddress; } }
 			public string DisplayName { get { return Profile.DisplayName; } }
 			public string Description
 			{
 				get
 				{
+					if (Profile.IsLocal)
+					{
+						return DisplayName + " (" + Environment.MachineName + ")";
+					}
+
 					string address = Profile.HasIpAddress ? IpAddress : "IPv4 не задан";
 					return DisplayName.Length == 0 ? address : DisplayName + " (" + address + ")";
 				}
 			}
-			public string Account { get { return Profile.HasUserName ? Profile.UserName : "Не задана"; } }
+			public string Account { get { return Profile.IsLocal ? "Текущий пользователь" : Profile.HasUserName ? Profile.UserName : "Не задана"; } }
 			public string ConnectionStatus { get; set; }
 			public string ScanStatus { get; set; }
 			public string CryptoProVersion { get; set; }
@@ -900,7 +1423,7 @@ namespace Telecom.App
 			{
 				Profile = profile;
 				SavedSelection = profile.Selected;
-				ConnectionStatus = profile.HasIpAddress ? "Не подключено" : "Укажите IPv4";
+				ConnectionStatus = profile.IsLocal ? "Локально" : profile.HasIpAddress ? "Не подключено" : "Укажите IPv4";
 			}
 		}
 	}

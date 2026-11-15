@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Data;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -38,7 +39,7 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("SMB: ПК без логина требует настройки перед подключением", CheckSmbWithoutCredentials));
 			tests.Add(new KeyValuePair<string, Action>("SMB: после проверки TCP используется сохранённая учётка ПК", CheckExplicitSmbConnection));
 			tests.Add(new KeyValuePair<string, Action>("SMB: конфликт учёток и отмена не отключают существующие сеансы", CheckSmbConnectionErrors));
-			tests.Add(new KeyValuePair<string, Action>("Интерфейс: сканирование общих и дополнительных путей выбранных ПК после входа", CheckComputerSelectionFlow));
+			tests.Add(new KeyValuePair<string, Action>("Интерфейс: сбор из папок и хранилища «Личное» с обработкой отказов", CheckComputerSelectionFlow));
 		}
 
 		// Проверяет восстановление выбранного набора без паролей и разовых файлов рядом с настройками.
@@ -67,7 +68,7 @@ namespace Telecom.Tests
 				Check.Equal(false, loaded[1].Selected);
 				Check.Equal(false, loaded[1].HasUserName);
 				string xml = File.ReadAllText(store.FilePath);
-				Check.Equal(true, xml.Contains("<computers version=\"3\">"));
+				Check.Equal(true, xml.Contains("<computers version=\"4\">"));
 				Check.Equal(false, xml.Contains("password"));
 				loaded[0].Selected = false;
 				store.Save(loaded);
@@ -383,7 +384,7 @@ namespace Telecom.Tests
 			}
 		}
 
-		// Запускает настоящее окно вне видимого экрана с временными настройками и полностью подставной сетью.
+		// Запускает окно с подставной сетью и проверяет сбор из папок и реестра после подключения.
 		private static void CheckComputerSelectionFlow()
 		{
 			using (var workspace = new TestWorkspace())
@@ -412,6 +413,7 @@ namespace Telecom.Tests
 				File.Copy(Fixture(Petrov, ".cer"), Path.Combine(nested, "petrov.cer"));
 				File.Copy(Fixture(Ivanov, ".cer"), Path.Combine(extra, "extra.cer"));
 				File.Copy(Fixture(Petrov, ".cer"), Path.Combine(secondCommon, "petrov.cer"));
+				byte[] machineCertificate = SerializeCertificateFixture(Ivanov);
 				string configurationPath = Path.Combine(workspace.DirectoryPath, "scan.config.xml");
 				string configurationXml = @"<scanSettings connectionTimeoutSeconds=""3""><directories><directory>C:\CommonCerts</directory></directories>"
 					+ @"<cryptoProExecutables><path>C:\Program Files\Crypto Pro\CSP\csptest.exe</path></cryptoProExecutables>";
@@ -441,6 +443,23 @@ namespace Telecom.Tests
 					authorizations++;
 					return 0;
 				});
+				var machineStore = new LabMachineCertificateStore((profile, token, readCertificate, reportError) =>
+				{
+					token.ThrowIfCancellationRequested();
+					Check.Equal(true, access.AuthenticatedComputers.Contains(profile.IpAddress));
+					ComputerProfile configured = configuredProfiles.Single(value => value.IpAddress == profile.IpAddress);
+					Check.Equal(configured.Id, profile.Id);
+					Check.Equal(configured.UserName, profile.UserName);
+					if (profile.IpAddress == ProfileComputerIp)
+					{
+						throw new Win32Exception(1722, "Тестовый отказ удалённого реестра.");
+					}
+
+					Check.Equal(ProfileCommonOnlyIp, profile.IpAddress);
+					reportError("invalid-blob", new InvalidDataException("Тестовая ошибка чтения записи."));
+					readCertificate("invalid-certificate", new byte[] { 0x30, 0x82, 0x03 });
+					readCertificate("personal-certificate", machineCertificate);
+				});
 				var logger = new MemoryLogger();
 				try
 				{
@@ -449,28 +468,29 @@ namespace Telecom.Tests
 						credentials.Save(profile.Id, profile.UserName, "dummy-password-" + profile.Id.ToString("N"));
 					}
 
-					using (var form = new MainForm(logger, store, access, connection))
+					using (var form = new MainForm(logger, store, access, connection, machineStore))
 					{
 						form.ShowInTaskbar = false;
 						form.StartPosition = FormStartPosition.Manual;
 						form.Location = new Point(-20000, -20000);
-						Check.Equal(configurationPath, FormField<TextBox>(form, "configurationInput").Text);
 						form.Show();
 						WaitForFormIdle(form);
 						Check.Equal(2, authorizations);
+						Check.Equal(0, machineStore.Reads);
 						Check.Equal(0, firstAccess.ReadPaths.Count);
 						Check.Equal(0, secondAccess.ReadPaths.Count);
 
 						DataGridView grid = FormField<DataGridView>(form, "computersGrid");
-						Check.Equal("Бухгалтерия — Иванов", grid.Rows[1].Cells[1].Value);
-						Check.Equal(ProfileComputerIp, grid.Rows[1].Cells[2].Value);
-						Check.Equal("Не задана", grid.Rows[4].Cells[3].Value);
-						grid.Rows[1].Cells[0].Value = false;
+						Check.Equal("Этот компьютер", grid.Rows[0].Cells[1].Value);
+						Check.Equal("Бухгалтерия — Иванов", grid.Rows[2].Cells[1].Value);
+						Check.Equal(ProfileComputerIp, grid.Rows[2].Cells[2].Value);
+						Check.Equal("Не задана", grid.Rows[5].Cells[3].Value);
+						grid.Rows[2].Cells[0].Value = false;
 						grid.EndEdit();
-						Check.Equal(false, store.Load()[1].Selected);
-						grid.Rows[1].Cells[0].Value = true;
+						Check.Equal(false, store.Load()[2].Selected);
+						grid.Rows[2].Cells[0].Value = true;
 						grid.EndEdit();
-						Check.Equal(true, store.Load()[1].Selected);
+						Check.Equal(true, store.Load()[2].Selected);
 
 						bool useSql = !string.IsNullOrWhiteSpace(databaseConnectionString);
 						if (useSql)
@@ -485,39 +505,58 @@ namespace Telecom.Tests
 						FormField<Button>(form, "scanButton").PerformClick();
 						WaitForFormIdle(form);
 						Check.Equal(4, authorizations);
+						Check.Equal(2, machineStore.Reads);
 						Check.Equal(false, access.AttemptedComputers.Contains(ProfileIgnoredIp));
 						Check.Equal(false, access.AttemptedComputers.Contains(ProfileWithoutLoginIp));
 						var certificates = (IList<CertificateInfo>)FormField<DataGridView>(form, "certificatesGrid").DataSource;
-						Check.Equal(4, certificates.Count);
+						Check.Equal(5, certificates.Count);
 						var sources = new HashSet<string>(certificates.Select(certificate => certificate.SourcePath), StringComparer.OrdinalIgnoreCase);
 						Check.Equal(true, sources.SetEquals(new[]
 						{
 							@"\\" + ProfileComputerIp + @"\C$\CommonCerts\ivanov.cer",
 							@"\\" + ProfileComputerIp + @"\C$\CommonCerts\Nested\petrov.cer",
 							@"\\" + ProfileComputerIp + @"\D$\Profiles\Ivanov\Certs\extra.cer",
-							@"\\" + ProfileCommonOnlyIp + @"\C$\CommonCerts\petrov.cer"
+							@"\\" + ProfileCommonOnlyIp + @"\C$\CommonCerts\petrov.cer",
+							"Реестр " + ProfileCommonOnlyIp + @"\LocalMachine\My\personal-certificate"
 						}));
+						Check.Equal("03A14016", certificates.Single(certificate => certificate.SourcePath.EndsWith(@"\personal-certificate", StringComparison.Ordinal)).SerialNumber);
 						var errors = (IList<ScanError>)FormField<DataGridView>(form, "errorsGrid").DataSource;
-						Check.Equal(3, errors.Count);
+						int scanColumn = grid.Columns.Cast<DataGridViewColumn>().Single(column => column.DataPropertyName == "ScanStatus").Index;
+						Check.Equal("Проверено частично; сертификатов: 3", grid.Rows[2].Cells[scanColumn].Value);
+						Check.Equal("Проверено частично; сертификатов: 2", grid.Rows[3].Cells[scanColumn].Value);
+						Check.Equal(6, errors.Count);
 						Check.Equal(true, errors[1].Path.Contains(ProfileWithoutLoginIp));
 						Check.Equal(true, errors[1].Message.Contains("«Изменить»"));
 						Check.Equal(ScanErrorKind.AccessDenied, errors[2].Kind);
 						Check.Equal(deniedDirectory, errors[2].Path);
-						Check.Equal(3, logger.Errors.Count);
+						Check.Equal(ScanErrorKind.Unavailable, errors[3].Kind);
+						Check.Equal("Реестр " + ProfileComputerIp + @"\LocalMachine\My", errors[3].Path);
+						Check.Equal(true, errors[3].Message.Contains("хранилище «Личное» компьютера"));
+						Check.Equal(ScanErrorKind.InvalidData, errors[4].Kind);
+						Check.Equal("Реестр " + ProfileCommonOnlyIp + @"\LocalMachine\My\invalid-blob", errors[4].Path);
+						Check.Equal(ScanErrorKind.InvalidData, errors[5].Kind);
+						Check.Equal("Реестр " + ProfileCommonOnlyIp + @"\LocalMachine\My\invalid-certificate", errors[5].Path);
+						Check.Equal(6, logger.Errors.Count);
 						Check.Equal(true, logger.Errors[2] is UnauthorizedAccessException);
+						Check.Equal(1722, ((Win32Exception)logger.Errors[3]).NativeErrorCode);
 
 						int databaseColumn = grid.Columns.Cast<DataGridViewColumn>().Single(column => column.DataPropertyName == "DatabaseStatus").Index;
 						if (useSql)
 						{
-							Check.Equal("Добавлено: 2, обновлено: 0", grid.Rows[1].Cells[databaseColumn].Value);
-							Check.Equal("Добавлено: 0, обновлено: 1", grid.Rows[2].Cells[databaseColumn].Value);
+							Check.Equal("Добавлено: 2, обновлено: 0", grid.Rows[2].Cells[databaseColumn].Value);
+							Check.Equal("Добавлено: 0, обновлено: 2", grid.Rows[3].Cells[databaseColumn].Value);
 							Check.Equal(2, CountRows());
-							Check.Equal("5.0.13003", ReadCertificate("03A14016").CryptoProVersion);
+							Check.Equal("5.0.13455", ReadCertificate("03A14016").CryptoProVersion);
 							Check.Equal("5.0.13455", ReadCertificate("378F0E85").CryptoProVersion);
+							DataTable locations = new CertificateRepository(databaseConnectionString, logger).ReadLocations();
+							Check.Equal(5, locations.Rows.Count);
+							Check.Equal(true, sources.SetEquals(locations.Rows.Cast<DataRow>().Select(row => (string)row["SourcePath"])));
+							Check.Equal(3, locations.Rows.Cast<DataRow>().Count(row => (string)row["ComputerAddress"] == ProfileComputerIp));
+							Check.Equal(2, locations.Rows.Cast<DataRow>().Count(row => (string)row["ComputerAddress"] == ProfileCommonOnlyIp));
 						}
 						else
 						{
-							Check.Equal("Строка подключения не задана", grid.Rows[1].Cells[databaseColumn].Value);
+							Check.Equal("Строка подключения не задана", grid.Rows[2].Cells[databaseColumn].Value);
 						}
 
 						File.WriteAllText(configurationPath, configurationXml
@@ -527,9 +566,10 @@ namespace Telecom.Tests
 						runComputers.Invoke(form, new object[] { true });
 						WaitForFormIdle(form);
 						Check.Equal(6, authorizations);
-						Check.Equal(4, FormField<DataGridView>(form, "certificatesGrid").Rows.Count);
-						Check.Equal(true, grid.Rows[1].Cells[databaseColumn].Value.ToString().StartsWith("Ошибка записи.", StringComparison.Ordinal));
+						Check.Equal(4, machineStore.Reads);
+						Check.Equal(5, FormField<DataGridView>(form, "certificatesGrid").Rows.Count);
 						Check.Equal(true, grid.Rows[2].Cells[databaseColumn].Value.ToString().StartsWith("Ошибка записи.", StringComparison.Ordinal));
+						Check.Equal(true, grid.Rows[3].Cells[databaseColumn].Value.ToString().StartsWith("Ошибка записи.", StringComparison.Ordinal));
 						Check.Equal(true, FormField<Label>(form, "statusLabel").Text.Contains("Ошибок записи в БД: 2."));
 						form.Close();
 					}
@@ -544,10 +584,40 @@ namespace Telecom.Tests
 			}
 		}
 
-		// Проверяет публичное поведение окна, не добавляя в продукт тестовых команд и режимов.
-		private static T FormField<T>(Form form, string name)
+		private sealed class LabMachineCertificateStore : IMachineCertificateStore
 		{
-			return (T)form.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
+			private readonly Action<ComputerProfile, CancellationToken, Action<string, byte[]>, Action<string, Exception>> read;
+			private readonly Action<ComputerProfile, IEnumerable<string>, CancellationToken, Action<string, byte[]>, Action<string, Exception>> readEntries;
+			internal int Reads { get; private set; }
+
+			// Задаёт сценарий чтения хранилища без доступа к реестру компьютеров пользователя.
+			internal LabMachineCertificateStore(Action<ComputerProfile, CancellationToken, Action<string, byte[]>, Action<string, Exception>> read,
+				Action<ComputerProfile, IEnumerable<string>, CancellationToken, Action<string, byte[]>, Action<string, Exception>> readEntries = null)
+			{
+				this.read = read;
+				this.readEntries = readEntries;
+			}
+
+			// Учитывает обращения к хранилищу отдельно от подключения SMB.
+			public void Read(ComputerProfile profile, CancellationToken cancellationToken,
+				Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
+			{
+				Reads++;
+				read(profile, cancellationToken, readCertificate, reportError);
+			}
+
+			public void ReadEntries(ComputerProfile profile, IEnumerable<string> entries, CancellationToken cancellationToken,
+				Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
+			{
+				Reads++;
+				readEntries(profile, entries, cancellationToken, readCertificate, reportError);
+			}
+		}
+
+		// Проверяет публичное поведение окна, не добавляя в продукт тестовых команд и режимов.
+		private static T FormField<T>(Control control, string name)
+		{
+			return (T)control.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(control);
 		}
 
 		// Обрабатывает WinForms-продолжения асинхронных операций с ограниченным ожиданием.
@@ -618,6 +688,12 @@ namespace Telecom.Tests
 			public bool IsReparsePoint(string path)
 			{
 				return AuthorizedAccess(path).IsReparsePoint(path);
+			}
+
+			// Читает метаданные ссылки только после авторизации на соответствующем тестовом ПК.
+			public string GetReparsePointTarget(string path)
+			{
+				return AuthorizedAccess(path).GetReparsePointTarget(path);
 			}
 
 			// Учитывает только действительно прочитанные открытые сертификаты.

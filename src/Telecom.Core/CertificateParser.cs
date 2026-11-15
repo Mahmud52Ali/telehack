@@ -49,7 +49,7 @@ namespace Telecom.Core
 				return new CertificateInfo(certificate.SerialNumber,
 					certificate.GetNameInfo(X509NameType.SimpleName, false),
 					certificate.GetNameInfo(X509NameType.SimpleName, true),
-					sourcePath, hasEmbeddedLicense);
+					sourcePath, hasEmbeddedLicense, certificate.NotAfter.ToUniversalTime());
 			}
 			finally
 			{

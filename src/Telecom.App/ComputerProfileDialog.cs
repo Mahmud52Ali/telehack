@@ -23,37 +23,50 @@ namespace Telecom.App
 		internal ComputerProfileDialog(ComputerProfile profile)
 		{
 			previous = profile;
+			bool isLocal = profile != null && profile.IsLocal;
 			Text = profile == null ? "Добавить компьютер" : "Изменить компьютер";
-			Font = new Font("Segoe UI", 9F);
-			AutoScaleMode = AutoScaleMode.Font;
-			ClientSize = new Size(570, 476);
+			WindowAppearance.Apply(this);
+			ClientSize = isLocal ? new Size(570, 330) : new Size(570, 476);
 			FormBorderStyle = FormBorderStyle.FixedDialog;
 			MaximizeBox = false;
 			MinimizeBox = false;
 			StartPosition = FormStartPosition.CenterParent;
+			AutoScroll = true;
 
-			var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 2, RowCount = 9 };
+			var layout = new TableLayoutPanel
+			{
+				Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12), ColumnCount = 2, RowCount = isLocal ? 5 : 9
+			};
 			layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
 			layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-			AddInput(layout, "IPv4", ipAddressInput, 0);
 			nameInput.MaxLength = 256;
-			AddInput(layout, "Название (необяз.)", nameInput, 1);
-			AddInput(layout, "Учётная запись", userInput, 2);
-			AddInput(layout, "Пароль", passwordInput, 3);
-			passwordInput.UseSystemPasswordChar = true;
-			var hint = new Label
+			int row = 0;
+			if (isLocal)
 			{
-				Text = "Пароль сохраняется в диспетчере учётных данных Windows.\r\nПри редактировании пустое поле сохраняет прежний пароль той же учётки.",
-				AutoSize = true, Dock = DockStyle.Fill
-			};
-			layout.Controls.Add(hint, 0, 4);
-			layout.SetColumnSpan(hint, 2);
+				nameInput.ReadOnly = true;
+				AddInput(layout, "Название", nameInput, row++);
+			}
+			else
+			{
+				AddInput(layout, "IPv4", ipAddressInput, row++);
+				AddInput(layout, "Название (необяз.)", nameInput, row++);
+				AddInput(layout, "Учётная запись", userInput, row++);
+				AddInput(layout, "Пароль", passwordInput, row++);
+				passwordInput.UseSystemPasswordChar = true;
+				var hint = new Label
+				{
+					Text = "Пароль сохраняется в диспетчере учётных данных Windows.\r\nПри редактировании пустое поле сохраняет прежний пароль той же учётки.",
+					AutoSize = true, Dock = DockStyle.Fill
+				};
+				layout.Controls.Add(hint, 0, row++);
+				layout.SetColumnSpan(hint, 2);
+			}
 			additionalDirectoriesInput.Multiline = true;
 			additionalDirectoriesInput.AcceptsReturn = true;
 			additionalDirectoriesInput.WordWrap = false;
 			additionalDirectoriesInput.ScrollBars = ScrollBars.Both;
 			additionalDirectoriesInput.MinimumSize = new Size(0, 85);
-			AddInput(layout, "Дополнительные пути", additionalDirectoriesInput, 5);
+			AddInput(layout, "Дополнительные пути", additionalDirectoriesInput, row++);
 			var pathsHint = new Label
 			{
 				Text = "Укажите пути к папкам на ПК, в каждой строке по одному пути, например:\r\n"
@@ -63,12 +76,12 @@ namespace Telecom.App
 					+ "Пустое поле означает, что проверяются только общие пути.",
 				AutoSize = true, Dock = DockStyle.Fill
 			};
-			layout.Controls.Add(pathsHint, 0, 6);
+			layout.Controls.Add(pathsHint, 0, row++);
 			layout.SetColumnSpan(pathsHint, 2);
 			errorLabel.ForeColor = Color.Firebrick;
 			errorLabel.AutoSize = true;
 			errorLabel.MaximumSize = new Size(540, 0);
-			layout.Controls.Add(errorLabel, 0, 7);
+			layout.Controls.Add(errorLabel, 0, row++);
 			layout.SetColumnSpan(errorLabel, 2);
 			var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
 			var cancel = new Button { Text = "Отмена", AutoSize = true, DialogResult = DialogResult.Cancel };
@@ -76,7 +89,7 @@ namespace Telecom.App
 			save.Click += OnSave;
 			buttons.Controls.Add(cancel);
 			buttons.Controls.Add(save);
-			layout.Controls.Add(buttons, 0, 8);
+			layout.Controls.Add(buttons, 0, row);
 			layout.SetColumnSpan(buttons, 2);
 			AcceptButton = save;
 			CancelButton = cancel;
@@ -104,6 +117,13 @@ namespace Telecom.App
 		{
 			try
 			{
+				if (previous != null && previous.IsLocal)
+				{
+					Profile = ComputerProfile.CreateLocal(previous.Selected, additionalDirectoriesInput.Lines);
+					DialogResult = DialogResult.OK;
+					return;
+				}
+
 				string userName = userInput.Text.Trim();
 				KeepPreviousPassword = previous != null && previous.HasUserName
 					&& string.Equals(previous.UserName, userName, StringComparison.OrdinalIgnoreCase) && passwordInput.Text.Length == 0;

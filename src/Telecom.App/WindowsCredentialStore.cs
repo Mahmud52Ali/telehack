@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Net;
 using System.Runtime.InteropServices;
+using Telecom.Core;
 using FileTime = System.Runtime.InteropServices.ComTypes.FILETIME;
 
 namespace Telecom.App
@@ -67,6 +68,18 @@ namespace Telecom.App
 			{
 				CredFree(pointer);
 			}
+		}
+
+		// Возвращает учётные данные только при совпадении логина с настройками ПК.
+		internal NetworkCredential ReadForComputer(ComputerProfile profile)
+		{
+			NetworkCredential credential = Read(profile.Id);
+			if (!string.Equals(credential.UserName, profile.UserName, StringComparison.OrdinalIgnoreCase))
+			{
+				throw new InvalidOperationException("Сохранённая учётная запись не совпадает с настройками компьютера. Задайте пароль заново.");
+			}
+
+			return credential;
 		}
 
 		// Удаляет только запись с идентификатором удалённого или изменённого профиля.

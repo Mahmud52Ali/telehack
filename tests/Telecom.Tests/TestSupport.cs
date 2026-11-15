@@ -109,6 +109,12 @@ namespace Telecom.Tests
 			return path == LinkedDirectory || actual.IsReparsePoint(path);
 		}
 
+		// Не считает моделируемую ссылку системной без подтверждённого назначения.
+		public string GetReparsePointTarget(string path)
+		{
+			return path == LinkedDirectory ? null : actual.GetReparsePointTarget(path);
+		}
+
 		// Делает попытку чтения контейнера ключей явной ошибкой проверки.
 		public byte[] ReadAllBytes(string filePath)
 		{

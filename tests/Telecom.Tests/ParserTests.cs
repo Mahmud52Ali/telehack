@@ -45,15 +45,21 @@ namespace Telecom.Tests
 		{
 			foreach (string owner in new[] { Ivanov, Petrov })
 			{
-				var certificate = new X509Certificate2(Fixture(owner, ".cer"));
-				try
-				{
-					AssertCertificate(certificate.Export(X509ContentType.SerializedCert), owner, owner == Ivanov ? "03A14016" : "378F0E85");
-				}
-				finally
-				{
-					certificate.Reset();
-				}
+				AssertCertificate(SerializeCertificateFixture(owner), owner, owner == Ivanov ? "03A14016" : "378F0E85");
+			}
+		}
+
+		// Получает сериализованную запись из открытого образца без установки в хранилище.
+		private static byte[] SerializeCertificateFixture(string owner)
+		{
+			var certificate = new X509Certificate2(Fixture(owner, ".cer"));
+			try
+			{
+				return certificate.Export(X509ContentType.SerializedCert);
+			}
+			finally
+			{
+				certificate.Reset();
 			}
 		}
 
@@ -114,6 +120,11 @@ namespace Telecom.Tests
 			Check.Equal(serial, certificate.SerialNumber);
 			Check.Equal("source.cer", certificate.SourcePath);
 			Check.Equal(false, certificate.IsCryptoProLicenseEmbedded);
+			var expiresAt = owner == Ivanov
+				? new DateTime(2027, 10, 26, 10, 21, 31, DateTimeKind.Utc)
+				: new DateTime(2027, 10, 26, 10, 25, 28, DateTimeKind.Utc);
+			Check.Equal(expiresAt, certificate.ExpiresAtUtc);
+			Check.Equal(DateTimeKind.Utc, certificate.ExpiresAtUtc.Value.Kind);
 		}
 
 		// Формирует тестовый элемент сериализованного хранилища без создания системного хранилища.

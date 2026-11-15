@@ -45,8 +45,126 @@ namespace Telecom.Core
 				ConnectionTimeoutSeconds, ConnectionString);
 		}
 
-		// Читает конфигурацию без разрешения DTD и внешних XML-сущностей.
+		// Записывает настройки в том же формате, который читает сканер.
+		public void Save(string filePath)
+		{
+			var root = new XElement("scanSettings",
+				new XAttribute("connectionTimeoutSeconds", ConnectionTimeoutSeconds),
+				new XElement("directories", Directories.Select(path => new XElement("directory", path))),
+				new XElement("cryptoProExecutables", CryptoProExecutables.Select(path => new XElement("path", path))),
+				new XElement("connectionString", ConnectionString));
+			WriteFile(filePath, temporaryPath =>
+			{
+				new XDocument(root).Save(temporaryPath);
+				return Load(temporaryPath);
+			}, true);
+		}
+
+		// Проверяет копию выбранного XML и переносит её в рабочий файл вместе с исходным оформлением.
+		public static ScanConfiguration Import(string sourcePath, string filePath)
+		{
+			return CopyConfiguration(sourcePath, filePath, true);
+		}
+
+		// Сохраняет точную копию рабочего XML, которую можно загрузить обратно.
+		public static void SaveCopy(string sourcePath, string copyPath)
+		{
+			if (string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(copyPath), StringComparison.OrdinalIgnoreCase))
+			{
+				throw new IOException("Выберите другое место или имя для копии конфигурации.");
+			}
+
+			CopyConfiguration(sourcePath, copyPath, true);
+		}
+
+		// Создаёт отсутствующий рабочий файл из шаблона. Другой экземпляр мог успеть создать его первым.
+		public static bool CreateFromTemplate(string filePath, string templatePath)
+		{
+			if (File.Exists(filePath))
+			{
+				return false;
+			}
+
+			try
+			{
+				CopyConfiguration(templatePath, filePath, false);
+				return true;
+			}
+			catch (IOException)
+			{
+				if (!File.Exists(filePath))
+				{
+					throw;
+				}
+
+				return false;
+			}
+		}
+
+		// Читает и копирует один снимок XML, сохраняя кодировку и комментарии.
+		private static ScanConfiguration CopyConfiguration(string sourcePath, string filePath, bool replaceExisting)
+		{
+			return WriteFile(filePath, temporaryPath =>
+			{
+				using (FileStream source = File.OpenRead(sourcePath))
+				{
+					ScanConfiguration configuration = Read(source);
+					source.Position = 0;
+					using (FileStream target = File.Create(temporaryPath))
+					{
+						source.CopyTo(target);
+					}
+
+					return configuration;
+				}
+			}, replaceExisting);
+		}
+
+		// Заменяет рабочий файл атомарно, после проверки XML и строки подключения.
+		private static ScanConfiguration WriteFile(string filePath, Func<string, ScanConfiguration> stage, bool replaceExisting)
+		{
+			filePath = Path.GetFullPath(filePath);
+			Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+			string temporaryPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+			try
+			{
+				ScanConfiguration configuration = stage(temporaryPath);
+				if (configuration.ConnectionString.Length > 0)
+				{
+					CertificateRepository.ParseConnectionString(configuration.ConnectionString);
+				}
+
+				if (replaceExisting && File.Exists(filePath))
+				{
+					File.Replace(temporaryPath, filePath, null);
+				}
+				else
+				{
+					File.Move(temporaryPath, filePath);
+				}
+
+				return configuration;
+			}
+			finally
+			{
+				if (File.Exists(temporaryPath))
+				{
+					File.Delete(temporaryPath);
+				}
+			}
+		}
+
+		// Открывает локальный или выбранный пользователем сетевой XML как файл.
 		public static ScanConfiguration Load(string filePath)
+		{
+			using (FileStream stream = File.OpenRead(filePath))
+			{
+				return Read(stream);
+			}
+		}
+
+		// Читает конфигурацию без разрешения DTD и внешних XML-сущностей.
+		private static ScanConfiguration Read(Stream stream)
 		{
 			var settings = new XmlReaderSettings
 			{
@@ -54,7 +172,7 @@ namespace Telecom.Core
 				XmlResolver = null,
 				MaxCharactersInDocument = 1024 * 1024
 			};
-			using (XmlReader reader = XmlReader.Create(filePath, settings))
+			using (XmlReader reader = XmlReader.Create(stream, settings))
 			{
 				XElement root = XDocument.Load(reader).Root;
 				if (root == null || root.Name != "scanSettings")

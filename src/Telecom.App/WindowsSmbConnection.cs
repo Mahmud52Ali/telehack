@@ -41,11 +41,7 @@ namespace Telecom.App
 			}
 
 			access.CheckConnection(profile.IpAddress, timeoutSeconds, cancellationToken);
-			NetworkCredential credential = credentials.Read(profile.Id);
-			if (!string.Equals(credential.UserName, profile.UserName, StringComparison.OrdinalIgnoreCase))
-			{
-				throw new InvalidOperationException("Сохранённая учётная запись не совпадает с настройками компьютера. Задайте пароль заново.");
-			}
+			NetworkCredential credential = credentials.ReadForComputer(profile);
 
 			cancellationToken.ThrowIfCancellationRequested();
 			int code = connectResource(@"\\" + profile.IpAddress + @"\IPC$", credential.UserName, credential.Password);

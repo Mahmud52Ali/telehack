@@ -13,12 +13,15 @@ namespace Telecom.Tests
 		private static void AddComputerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
 			tests.Add(new KeyValuePair<string, Action>("ПК: два профиля по маске и версия КриптоПро", CheckComputerCollection));
+			tests.Add(new KeyValuePair<string, Action>("ПК: служебные ссылки распознаются по назначению независимо от языка", CheckProfileCompatibilityLinks));
+			tests.Add(new KeyValuePair<string, Action>("ПК: ссылки на профили и недоступные назначения остаются ошибками", CheckUnverifiedProfileLinks));
 			tests.Add(new KeyValuePair<string, Action>("ПК: вложенные маски и диск D:", CheckNestedPatterns));
 			tests.Add(new KeyValuePair<string, Action>("ПК: перекрывающиеся папки не дублируют источники", CheckOverlappingSources));
 			tests.Add(new KeyValuePair<string, Action>("ПК: отказ доступа к профилю даёт частичный результат", CheckPartialComputer));
 			tests.Add(new KeyValuePair<string, Action>("ПК: закрытая административная папка отличается от отсутствующего файла", CheckDeniedComputer));
 			tests.Add(new KeyValuePair<string, Action>("ПК: сетевой отказ не превращается в пустой успех", CheckUnavailableComputer));
-			tests.Add(new KeyValuePair<string, Action>("ПК: отсутствующая папка и пустая маска видны как ошибки", CheckMissingComputerDirectories));
+			tests.Add(new KeyValuePair<string, Action>("ПК: пустые личные хранилища отличаются от отказа доступа", CheckEmptyUserCertificateStores));
+			tests.Add(new KeyValuePair<string, Action>("ПК: отсутствующая папка и произвольная маска без совпадений видны как ошибки", CheckMissingComputerDirectories));
 			tests.Add(new KeyValuePair<string, Action>("КриптоПро: отсутствие, запасной путь и отказ доступа", CheckCryptoProOutcomes));
 			tests.Add(new KeyValuePair<string, Action>("КриптоПро: ProductVersion нормализуется без потери ненулевой ревизии", CheckProductVersionNormalization));
 			tests.Add(new KeyValuePair<string, Action>("ПК: отмена до подключения и после первого сертификата", CheckComputerCancellation));
@@ -26,7 +29,7 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("Неожиданная ошибка реализации не маскируется под сетевой отказ", CheckUnexpectedComputerFailure));
 		}
 
-		// Проверяет весь путь от настроек до моделей, включая отсутствие папки у пустого профиля.
+		// Проверяет сбор из реальных профилей рядом с пустым профилем и штатными ссылками Windows.
 		private static void CheckComputerCollection()
 		{
 			using (var workspace = new TestWorkspace())
@@ -34,6 +37,13 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "Public"));
 				var access = CreateLabAccess(workspace.DirectoryPath);
+				foreach (string name in new[] { "Default User", "All Users" })
+				{
+					Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", name));
+					access.LinkedPaths.Add(@"\\LAB-PC\C$\Users\" + name);
+					access.LinkTargets.Add(@"\\LAB-PC\C$\Users\" + name,
+						name == "Default User" ? @"C:\Users\Default" : @"C:\ProgramData");
+				}
 				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
 				Check.Equal(ComputerScanStatus.Complete, result.Status);
 				Check.Equal(2, result.Certificates.Count);
@@ -48,6 +58,85 @@ namespace Telecom.Tests
 				{
 					Check.Equal(true, certificate.SourcePath.StartsWith(@"\\LAB-PC\C$\Users\", StringComparison.Ordinal));
 				}
+			}
+		}
+
+		// Проверяет локализованные имена и оба формата назначения, возвращаемые при удалённом чтении.
+		private static void CheckProfileCompatibilityLinks()
+		{
+			using (var workspace = new TestWorkspace())
+			{
+				CreateLabProfiles(workspace.DirectoryPath);
+				var access = CreateLabAccess(workspace.DirectoryPath);
+				foreach (string name in new[] { "All Users", "Все пользователи", "Общие данные", "Default User", "Пользователь по умолчанию" })
+				{
+					Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", name));
+					string target = @"c:\programdata\";
+					if (name == "Default User" || name == "Пользователь по умолчанию")
+					{
+						target = @"C:\Users\Default";
+					}
+					else if (name == "Общие данные")
+					{
+						target = @"\\LAB-PC\C$\ProgramData\";
+					}
+					access.LinkTargets.Add(@"\\LAB-PC\C$\Users\" + name, target);
+				}
+				var logger = new MemoryLogger();
+				ComputerScanResult result = new ComputerScanner(access, new CertificateParser(), logger)
+					.Scan("LAB-PC", LabConfiguration(@"C:\Users\*\Certs"), CancellationToken.None);
+				Check.Equal(ComputerScanStatus.Complete, result.Status);
+				Check.Equal(2, result.Certificates.Count);
+				Check.Equal(0, result.Errors.Count);
+				Check.Equal(0, logger.Errors.Count);
+				Check.Equal(5, logger.Messages.FindAll(message => message.StartsWith("Пропущена системная ссылка")).Count);
+			}
+		}
+
+		// Не скрывает перенаправления профилей даже под служебным именем и сохраняет ошибки чтения назначения.
+		private static void CheckUnverifiedProfileLinks()
+		{
+			foreach (string target in new[] { @"C:\Users\Ivanov", @"D:\ProgramData", @"\\OTHER-PC\C$\ProgramData", @"C:\ProgramData\Personal", null })
+			{
+				using (var workspace = new TestWorkspace())
+				{
+					CreateLabProfiles(workspace.DirectoryPath);
+					var access = CreateLabAccess(workspace.DirectoryPath);
+					Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "All Users"));
+					access.LinkTargets.Add(@"\\LAB-PC\C$\Users\All Users", target);
+					ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
+					Check.Equal(ComputerScanStatus.Partial, result.Status);
+					Check.Equal(2, result.Certificates.Count);
+					Check.Equal(1, result.Errors.Count);
+					Check.Equal(@"\\LAB-PC\C$\Users\All Users\Certs", result.Errors[0].Path);
+				}
+			}
+
+			using (var workspace = new TestWorkspace())
+			{
+				CreateLabProfiles(workspace.DirectoryPath);
+				var access = CreateLabAccess(workspace.DirectoryPath);
+				string link = @"\\LAB-PC\C$\Users\Все пользователи";
+				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "Все пользователи"));
+				access.LinkedPaths.Add(link);
+				access.LinkTargetErrors.Add(link, new UnauthorizedAccessException("Метаданные ссылки недоступны."));
+				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
+				Check.Equal(ComputerScanStatus.Partial, result.Status);
+				Check.Equal(1, result.Errors.Count);
+				Check.Equal(ScanErrorKind.AccessDenied, result.Errors[0].Kind);
+			}
+
+			using (var workspace = new TestWorkspace())
+			{
+				CreateLabProfiles(workspace.DirectoryPath);
+				var access = CreateLabAccess(workspace.DirectoryPath);
+				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Profiles", "All Users"));
+				access.LinkTargets.Add(@"\\LAB-PC\C$\Profiles\All Users", @"C:\ProgramData");
+				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs", @"C:\Profiles\*\Certs"));
+				Check.Equal(ComputerScanStatus.Partial, result.Status);
+				Check.Equal(2, result.Certificates.Count);
+				Check.Equal(1, result.Errors.Count);
+				Check.Equal(@"\\LAB-PC\C$\Profiles\All Users\Certs", result.Errors[0].Path);
 			}
 		}
 
@@ -81,7 +170,7 @@ namespace Telecom.Tests
 			}
 		}
 
-		// Проверяет, что недоступный профиль не мешает собрать данные доступного пользователя.
+		// Проверяет, что недоступный профиль и перенаправление видны в результате частичного сбора.
 		private static void CheckPartialComputer()
 		{
 			using (var workspace = new TestWorkspace())
@@ -89,12 +178,15 @@ namespace Telecom.Tests
 				CreateLabProfiles(workspace.DirectoryPath);
 				var access = CreateLabAccess(workspace.DirectoryPath);
 				access.DeniedPaths.Add(@"\\LAB-PC\C$\Users\Petrov");
+				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "Redirected"));
+				access.LinkedPaths.Add(@"\\LAB-PC\C$\Users\Redirected");
 				ComputerScanResult result = ScanLab(access, LabConfiguration(@"C:\Users\*\Certs"));
 				Check.Equal(ComputerScanStatus.Partial, result.Status);
 				Check.Equal(1, result.Certificates.Count);
 				Check.Equal("03A14016", result.Certificates[0].SerialNumber);
-				Check.Equal(1, result.Errors.Count);
+				Check.Equal(2, result.Errors.Count);
 				Check.Equal(ScanErrorKind.AccessDenied, result.Errors[0].Kind);
+				Check.Equal(@"\\LAB-PC\C$\Users\Redirected\Certs", result.Errors[1].Path);
 			}
 		}
 
@@ -131,7 +223,48 @@ namespace Telecom.Tests
 			}
 		}
 
-		// Проверяет отсутствие совпадений и продолжение после отсутствующего буквального пути.
+		// Проверяет штатную маску на доступном ПК без сертификатов и с закрытым профилем.
+		private static void CheckEmptyUserCertificateStores()
+		{
+			using (var workspace = new TestWorkspace())
+			{
+				const string computer = "192.0.2.10";
+				Directory.CreateDirectory(Path.Combine(workspace.DirectoryPath, "C$", "Users", "Ivanov", "AppData", "Roaming"));
+				var profile = new ComputerProfile(Guid.NewGuid(), computer, string.Empty, "reader", true);
+				var access = new LabComputerAccess(workspace.DirectoryPath, computer);
+				var scanner = new ComputerScanner(access, new CertificateParser(), new MemoryLogger());
+				var store = new LabMachineCertificateStore((target, token, readCertificate, reportError) => Check.Equal(computer, target.IpAddress));
+				ScanConfiguration configuration = ScanConfiguration.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scan.config.template.xml"));
+				ComputerScanResult empty = scanner.ScanProfile(profile, configuration, store, CancellationToken.None);
+				Check.Equal(ComputerScanStatus.Complete, empty.Status);
+				Check.Equal(0, empty.Certificates.Count);
+				Check.Equal(0, empty.Errors.Count);
+				Check.Equal(1, store.Reads);
+
+				var unavailableStore = new LabMachineCertificateStore((target, token, readCertificate, reportError) =>
+				{
+					throw new TimeoutException("Тестовый отказ удалённого реестра.");
+				});
+				ComputerScanResult unavailable = scanner.ScanProfile(profile, configuration, unavailableStore, CancellationToken.None);
+				Check.Equal(ComputerScanStatus.Partial, unavailable.Status);
+				Check.Equal(1, unavailable.Errors.Count);
+				Check.Equal(ScanErrorKind.Unavailable, unavailable.Errors[0].Kind);
+
+				access.DeniedPaths.Add(@"\\192.0.2.10\C$\Users\Ivanov");
+				ComputerScanResult denied = scanner.ScanProfile(profile, configuration, store, CancellationToken.None);
+				Check.Equal(ComputerScanStatus.Partial, denied.Status);
+				Check.Equal(1, denied.Errors.Count);
+				Check.Equal(ScanErrorKind.AccessDenied, denied.Errors[0].Kind);
+
+				ComputerScanResult missingRoot = scanner.ScanProfile(profile, LabConfiguration(@"D:\Profiles\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates"),
+					store, CancellationToken.None);
+				Check.Equal(ComputerScanStatus.Partial, missingRoot.Status);
+				Check.Equal(1, missingRoot.Errors.Count);
+				Check.Equal(ScanErrorKind.NotFound, missingRoot.Errors[0].Kind);
+			}
+		}
+
+		// Проверяет произвольную маску без совпадений и продолжение после отсутствующего буквального пути.
 		private static void CheckMissingComputerDirectories()
 		{
 			using (var workspace = new TestWorkspace())
