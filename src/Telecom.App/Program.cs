@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.VisualBasic.ApplicationServices;
 using Telecom.App.Forms;
@@ -25,7 +26,7 @@ namespace Telecom.App
 			// Создаёт главное окно только в первом процессе.
 			protected override void OnCreateMainForm()
 			{
-				logger.Info("Приложение запущено.");
+				logger.Info(StartupMessage());
 				MainForm = new Telecom.App.Forms.MainForm(logger);
 				Started = true;
 			}
@@ -36,6 +37,14 @@ namespace Telecom.App
 				args.BringToForeground = true;
 				base.OnStartupNextInstance(args);
 			}
+		}
+
+		// Первая строка журнала по образцу из условий кейса: кто запустил программу, на каком ПК и какую версию.
+		private static string StartupMessage()
+		{
+			return string.Format("Приложение запущено. User login: {0}\\{1}, компьютер: {2}, версия: {3}",
+				Environment.UserDomainName, Environment.UserName, Environment.MachineName,
+				Assembly.GetExecutingAssembly().GetName().Version);
 		}
 
 		// Настраивает журнал, обработчики исключений и запускает окно администратора.
@@ -53,7 +62,7 @@ namespace Telecom.App
 				application.Run(Environment.GetCommandLineArgs());
 				if (application.Started)
 				{
-					logger.Info("Приложение закрыто.");
+					logger.Info("Выход из приложения");
 				}
 			}
 			catch (Exception exception)
