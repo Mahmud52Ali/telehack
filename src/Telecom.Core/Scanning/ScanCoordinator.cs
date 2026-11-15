@@ -45,11 +45,14 @@ namespace Telecom.Core.Scanning
 				return summary;
 			}
 
+			// ПК, к которым не удалось подключиться, тоже считаются непроверенными.
+			summary.Failed = profiles.Count - connected.Count;
+
 			foreach (ComputerProfile profile in connected)
 			{
 				cancellationToken.ThrowIfCancellationRequested();
 				ComputerScanResult result = ScanComputer(profile, configuration, progress, cancellationToken);
-				summary.Completed++;
+				CountStatus(summary, result.Status);
 				if (!SaveResults(profile, result, configuration, progress, cancellationToken))
 				{
 					summary.DatabaseFailures++;
@@ -59,6 +62,23 @@ namespace Telecom.Core.Scanning
 			}
 
 			return summary;
+		}
+
+		// Относит ПК к одной из групп итога по статусу проверки.
+		private static void CountStatus(ScanRunSummary summary, ComputerScanStatus status)
+		{
+			if (status == ComputerScanStatus.Complete)
+			{
+				summary.Complete++;
+			}
+			else if (status == ComputerScanStatus.Partial)
+			{
+				summary.Partial++;
+			}
+			else
+			{
+				summary.Failed++;
+			}
 		}
 
 		// Подключается к каждому удалённому ПК по очереди и возвращает те, что доступны; локальный ПК подключать не нужно.

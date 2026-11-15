@@ -189,7 +189,8 @@ namespace Telecom.App.Forms.Scan
 				List<ComputerProfile> profiles = selected.Select(item => item.Profile).ToList();
 				ScanRunSummary summary = await Task.Run(() => coordinator.Run(profiles, scan, configuration, progress, token), token);
 				string processed = scan
-					? string.Format("Обработано ПК: {0} из {1}; сертификатов: {2}. ", summary.Completed, selected.Count, certificates.Count)
+					? string.Format("Проверено ПК: {0} из {1} (полностью: {2}, частично: {3}, не удалось: {4}); сертификатов: {5}. ",
+						summary.Checked, selected.Count, summary.Complete, summary.Partial, summary.Failed, certificates.Count)
 					: string.Format("Подключено удалённых ПК: {0} из {1}. ", summary.Connected, selected.Count);
 				statusLabel.Text = processed + string.Format("Ошибок подключения и чтения: {0}.{1}", errors.Count,
 					summary.DatabaseFailures == 0 ? string.Empty : " Ошибок записи в БД: " + summary.DatabaseFailures + ".");

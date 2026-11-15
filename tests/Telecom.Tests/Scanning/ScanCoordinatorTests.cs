@@ -19,6 +19,7 @@ namespace Telecom.Tests
 		private static void AddScanCoordinatorTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
 			AddTest(tests, "Координатор: недоступный ПК не мешает сканированию и записи остальных", CheckCoordinatorFullRun);
+			AddTest(tests, "Координатор: итог делит ПК на проверенные полностью, частично и неудачно", CheckCoordinatorStatusCounts);
 			AddTest(tests, "Координатор: ошибка записи в БД учитывается и не прерывает запуск", CheckCoordinatorSaveFailure);
 			AddTest(tests, "Координатор: без строки подключения запись пропускается", CheckCoordinatorWithoutDatabase);
 			AddTest(tests, "Координатор: режим подключения не сканирует", CheckCoordinatorConnectOnly);
@@ -40,7 +41,10 @@ namespace Telecom.Tests
 				progress, CancellationToken.None);
 
 			Check.Equal(1, summary.Connected);
-			Check.Equal(1, summary.Completed);
+			Check.Equal(1, summary.Complete);
+			Check.Equal(0, summary.Partial);
+			Check.Equal(1, summary.Failed);
+			Check.Equal(1, summary.Checked);
 			Check.Equal(0, summary.DatabaseFailures);
 			Check.Equal("Connecting ConnectionFailed", progress.StagesOf(offline));
 			Check.Equal("Connecting Connected Scanning Scanned Saving Saved", progress.StagesOf(online));
@@ -48,6 +52,24 @@ namespace Telecom.Tests
 			Check.Equal(CoordinatorOnlineIp, writer.Calls[0].ComputerAddress);
 			Check.Equal("5.0.13003", writer.Calls[0].CryptoProVersion);
 			Check.Equal(1, writer.Calls[0].Certificates.Count);
+		}
+
+		// Первый ПК читается полностью, у второго дополнительная папка отсутствует (частично), третий не подключается.
+		private static void CheckCoordinatorStatusCounts()
+		{
+			var connector = new FakeConnector();
+			connector.Failures["192.0.2.22"] = new IOException("Тестовый отказ сети.");
+			ComputerProfile complete = CoordinatorProfile(CoordinatorOnlineIp);
+			var partial = new ComputerProfile(Guid.NewGuid(), CoordinatorOfflineIp, string.Empty, @"LAB\reader", true, new[] { @"C:\Missing" });
+			ComputerProfile failed = CoordinatorProfile("192.0.2.22");
+
+			ScanRunSummary summary = CreateCoordinator(connector, new FakeCertificateWriter()).Run(new[] { complete, partial, failed }, true,
+				CoordinatorConfiguration(string.Empty), new RecordingProgress(), CancellationToken.None);
+
+			Check.Equal(1, summary.Complete);
+			Check.Equal(1, summary.Partial);
+			Check.Equal(1, summary.Failed);
+			Check.Equal(2, summary.Checked);
 		}
 
 		// Ошибка записи даёт этап SaveFailed и счётчик, а не исключение.
@@ -90,7 +112,8 @@ namespace Telecom.Tests
 				CoordinatorConfiguration("Server=.;Database=Tests"), progress, CancellationToken.None);
 
 			Check.Equal(1, summary.Connected);
-			Check.Equal(0, summary.Completed);
+			Check.Equal(0, summary.Checked);
+			Check.Equal(0, summary.Failed);
 			Check.Equal("Connecting Connected", progress.StagesOf(online));
 			Check.Equal(0, writer.Calls.Count);
 		}
