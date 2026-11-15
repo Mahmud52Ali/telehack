@@ -22,7 +22,7 @@ namespace Telecom.Tests
 		// Проверяет локальную строку, её настройки и сбор данных без SMB и сохранённых паролей.
 		private static void AddLocalComputerTests(ICollection<KeyValuePair<string, Action>> tests)
 		{
-			tests.Add(new KeyValuePair<string, Action>("Этот компьютер: настройки и перенос списка версии 3 без потери учёток", CheckLocalComputerSettings));
+			tests.Add(new KeyValuePair<string, Action>("Этот компьютер: настройки сохраняются отдельно от удалённых ПК", CheckLocalComputerSettings));
 			tests.Add(new KeyValuePair<string, Action>("Этот компьютер: редактор меняет только дополнительные пути", CheckLocalComputerDialog));
 			tests.Add(new KeyValuePair<string, Action>("Этот компьютер: файлы, маски, версия, ошибки и отмена без сети", CheckLocalComputerScan));
 			tests.Add(new KeyValuePair<string, Action>("Этот компьютер: чтение настоящего локального хранилища без учётки", CheckLocalMachineStore));
@@ -43,7 +43,7 @@ namespace Telecom.Tests
 				Check.Equal(2, loaded.Count);
 				Check.Equal(true, loaded[0].IsLocal);
 				Check.Equal("Этот компьютер", loaded[0].DisplayName);
-				Check.Equal(false, loaded[0].HasIpAddress);
+				Check.Equal(string.Empty, loaded[0].IpAddress);
 				Check.Equal(false, loaded[0].HasUserName);
 				Check.Equal(true, loaded[0].Selected);
 				Check.Equal(2, loaded[0].AdditionalDirectories.Count);
@@ -61,15 +61,6 @@ namespace Telecom.Tests
 				Check.Throws<InvalidDataException>(() => store.Load());
 				File.WriteAllText(store.FilePath, "<computers version=\"4\"><localComputer selected=\"true\" /><localComputer selected=\"false\" /></computers>");
 				Check.Throws<InvalidDataException>(() => store.Load());
-				File.WriteAllText(store.FilePath, "<computers version=\"3\"><computer id=\"" + remote.Id + "\" ipAddress=\"" + remote.IpAddress
-					+ "\" name=\"Удалённый ПК\" userName=\"LAB-PC\\reader\" selected=\"false\"><additionalDirectory>D:\\RemoteCerts</additionalDirectory></computer></computers>");
-				List<ComputerProfile> migrated = store.Load();
-				store.Save(new[] { ComputerProfile.CreateLocal(false) }.Concat(migrated));
-				ComputerProfile restored = store.Load()[1];
-				Check.Equal(remote.Id, restored.Id);
-				Check.Equal(remote.UserName, restored.UserName);
-				Check.Equal(@"D:\RemoteCerts", restored.AdditionalDirectories[0]);
-				Check.Equal(false, restored.Selected);
 			}
 		}
 
@@ -101,7 +92,7 @@ namespace Telecom.Tests
 				Check.Equal(true, saved.IsLocal);
 				Check.Equal(local.Id, saved.Id);
 				Check.Equal("Этот компьютер", saved.DisplayName);
-				Check.Equal(false, saved.HasIpAddress);
+				Check.Equal(string.Empty, saved.IpAddress);
 				Check.Equal(false, saved.HasUserName);
 				Check.Equal(false, saved.Selected);
 				Check.Equal(2, saved.AdditionalDirectories.Count);

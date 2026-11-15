@@ -9,6 +9,8 @@ namespace Telecom.Core.Computers
 {
 	public sealed class ComputerListFile
 	{
+		private static readonly string[] RemoteAttributes = { "id", "ipAddress", "name", "userName", "selected" };
+
 		public string FilePath { get; private set; }
 
 		// Запоминает полный путь к файлу списка ПК.
@@ -37,53 +39,64 @@ namespace Telecom.Core.Computers
 				return new List<ComputerProfile>();
 			}
 
-			string version = document.Root == null ? null : (string)document.Root.Attribute("version");
-			if (document.Root == null || document.Root.Name != "computers" || (version != "1" && version != "2" && version != "3" && version != "4")
-				|| document.Root.Attributes().Any(attribute => attribute.Name != "version"))
+			XElement root = document.Root;
+			if (root == null || root.Name != "computers" || (string)root.Attribute("version") != "4"
+				|| root.Attributes().Any(attribute => attribute.Name != "version"))
 			{
-				throw new InvalidDataException("Ожидался список компьютеров версии 1, 2, 3 или 4.");
+				throw new InvalidDataException("Ожидался список компьютеров версии 4.");
 			}
 
 			var profiles = new List<ComputerProfile>();
-			foreach (XElement element in document.Root.Elements())
+			foreach (XElement element in root.Elements())
 			{
-				Guid id;
-				bool selected;
-				if (version == "4" && element.Name == "localComputer")
-				{
-					if (element.Attributes().Any(attribute => attribute.Name != "selected")
-						|| element.Nodes().OfType<XText>().Any(node => !string.IsNullOrWhiteSpace(node.Value))
-						|| element.Elements().Any(directory => directory.Name != "additionalDirectory" || directory.HasAttributes || directory.HasElements)
-						|| !bool.TryParse((string)element.Attribute("selected"), out selected))
-					{
-						throw new InvalidDataException("Некорректные настройки локального компьютера.");
-					}
-
-					profiles.Add(ComputerProfile.CreateLocal(selected, element.Elements("additionalDirectory").Select(directory => directory.Value)));
-					continue;
-				}
-
-				string addressAttribute = version == "1" ? "address" : "ipAddress";
-				if (element.Name != "computer" || element.Nodes().OfType<XText>().Any(node => !string.IsNullOrWhiteSpace(node.Value))
-					|| element.Elements().Any(directory => (version != "3" && version != "4") || directory.Name != "additionalDirectory"
-						|| directory.HasAttributes || directory.HasElements)
-					|| element.Attributes().Any(attribute => attribute.Name != "id" && attribute.Name != addressAttribute
-						&& (version == "1" || attribute.Name != "name") && attribute.Name != "userName" && attribute.Name != "selected")
-					|| !Guid.TryParse((string)element.Attribute("id"), out id)
-					|| !bool.TryParse((string)element.Attribute("selected"), out selected))
-				{
-					throw new InvalidDataException("Некорректная запись в списке компьютеров.");
-				}
-
-				string address = (string)element.Attribute(addressAttribute);
-				string userName = (string)element.Attribute("userName");
-				profiles.Add(version == "1" ? ComputerProfile.FromLegacy(id, address, userName, selected)
-					: ComputerProfile.FromStored(id, address, (string)element.Attribute("name"), userName, selected,
-						element.Elements("additionalDirectory").Select(directory => directory.Value)));
+				profiles.Add(element.Name == "localComputer" ? ReadLocalComputer(element) : ReadRemoteComputer(element));
 			}
 
 			Validate(profiles);
 			return profiles;
+		}
+
+		// Читает строку «Этот компьютер»: только галочка и дополнительные пути.
+		private static ComputerProfile ReadLocalComputer(XElement element)
+		{
+			bool selected;
+			if (element.Attributes().Any(attribute => attribute.Name != "selected") || !HasOnlyDirectories(element)
+				|| !bool.TryParse((string)element.Attribute("selected"), out selected))
+			{
+				throw new InvalidDataException("Некорректные настройки локального компьютера.");
+			}
+
+			return ComputerProfile.CreateLocal(selected, ReadDirectories(element));
+		}
+
+		// Читает удалённый ПК: идентификатор, IPv4, подпись, логин, галочку и дополнительные пути.
+		private static ComputerProfile ReadRemoteComputer(XElement element)
+		{
+			Guid id;
+			bool selected;
+			if (element.Name != "computer" || !HasOnlyDirectories(element)
+				|| element.Attributes().Any(attribute => !RemoteAttributes.Contains(attribute.Name.LocalName))
+				|| !Guid.TryParse((string)element.Attribute("id"), out id)
+				|| !bool.TryParse((string)element.Attribute("selected"), out selected))
+			{
+				throw new InvalidDataException("Некорректная запись в списке компьютеров.");
+			}
+
+			return new ComputerProfile(id, (string)element.Attribute("ipAddress"), (string)element.Attribute("name"),
+				(string)element.Attribute("userName"), selected, ReadDirectories(element));
+		}
+
+		// Проверяет, что внутри записи нет текста и других элементов, кроме additionalDirectory без атрибутов.
+		private static bool HasOnlyDirectories(XElement element)
+		{
+			return !element.Nodes().OfType<XText>().Any(node => !string.IsNullOrWhiteSpace(node.Value))
+				&& !element.Elements().Any(child => child.Name != "additionalDirectory" || child.HasAttributes || child.HasElements);
+		}
+
+		// Возвращает дополнительные пути записи в порядке следования.
+		private static IEnumerable<string> ReadDirectories(XElement element)
+		{
+			return element.Elements("additionalDirectory").Select(directory => directory.Value);
 		}
 
 		// Проверяет уникальность до записи и атомарно заменяет существующий файл настроек.
@@ -109,14 +122,14 @@ namespace Telecom.Core.Computers
 			AtomicFile.Write(FilePath, temporaryPath => new XDocument(root).Save(temporaryPath));
 		}
 
-		// IPv4 уникальны; несколько старых записей могут ждать заполнения адреса, а подписи могут совпадать.
+		// IPv4 и идентификаторы уникальны; подписи могут совпадать.
 		public static void Validate(IEnumerable<ComputerProfile> profiles)
 		{
 			var computers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			var identifiers = new HashSet<Guid>();
 			foreach (ComputerProfile profile in profiles)
 			{
-				if (profile == null || (profile.HasIpAddress && !computers.Add(profile.IpAddress)) || !identifiers.Add(profile.Id))
+				if (profile == null || (!profile.IsLocal && !computers.Add(profile.IpAddress)) || !identifiers.Add(profile.Id))
 				{
 					throw new InvalidDataException("Список содержит повторяющийся компьютер или идентификатор.");
 				}

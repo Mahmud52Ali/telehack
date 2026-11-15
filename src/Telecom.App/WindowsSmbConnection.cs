@@ -31,9 +31,9 @@ namespace Telecom.App
 		// После проверки TCP устанавливает сеанс SMB; права на конкретные файлы проверяет сканер.
 		public void Connect(ComputerProfile profile, int timeoutSeconds, CancellationToken cancellationToken)
 		{
-			if (!profile.HasIpAddress)
+			if (profile.IsLocal)
 			{
-				throw new InvalidOperationException("Для этого компьютера нужно указать IPv4 через «Изменить».");
+				throw new InvalidOperationException("Этот компьютер читается локально, SMB-подключение не требуется.");
 			}
 
 			if (!profile.HasUserName)

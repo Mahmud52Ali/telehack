@@ -37,8 +37,6 @@ namespace Telecom.Tests
 			tests.Add(new KeyValuePair<string, Action>("Список ПК: дубли не повреждают прежний файл", CheckDuplicateComputerProfiles));
 			tests.Add(new KeyValuePair<string, Action>("Список ПК: повреждённый XML и DTD не принимаются", CheckInvalidComputerProfiles));
 			tests.Add(new KeyValuePair<string, Action>("Список ПК: только полный IPv4 без имён и неоднозначных сокращений", CheckProfileIpv4));
-			tests.Add(new KeyValuePair<string, Action>("Список ПК: прежние записи сохраняют учётки и требуют IPv4 вместо имени", CheckLegacyComputerProfiles));
-			tests.Add(new KeyValuePair<string, Action>("Список ПК: перенос версии 2 сохраняет поля и ссылки на пароли", CheckVersionTwoComputerProfiles));
 			tests.Add(new KeyValuePair<string, Action>("Редактор ПК: проверка IPv4 и путей с сохранением учётки", CheckComputerProfileDialog));
 			tests.Add(new KeyValuePair<string, Action>("Учётки Windows: запись, обновление и удаление собственного секрета", CheckWindowsCredentialStore));
 			tests.Add(new KeyValuePair<string, Action>("SMB: ПК без логина требует настройки перед подключением", CheckSmbWithoutCredentials));
@@ -113,17 +111,19 @@ namespace Telecom.Tests
 				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
 				File.WriteAllText(store.FilePath, "<computers version=\"99\" />", Encoding.UTF8);
 				Check.Throws<InvalidDataException>(() => store.Load());
-				string xml = "<!DOCTYPE computers [<!ENTITY external SYSTEM 'file:///unavailable'>]><computers version=\"1\">&external;</computers>";
+				File.WriteAllText(store.FilePath, "<computers version=\"3\" />", Encoding.UTF8);
+				Check.Throws<InvalidDataException>(() => store.Load());
+				string xml = "<!DOCTYPE computers [<!ENTITY external SYSTEM 'file:///unavailable'>]><computers version=\"4\">&external;</computers>";
 				File.WriteAllText(store.FilePath, xml, Encoding.UTF8);
 				Check.Throws<XmlException>(() => store.Load());
 				Check.Equal(xml, File.ReadAllText(store.FilePath));
 				File.WriteAllText(store.FilePath, "<computers", Encoding.UTF8);
 				Check.Throws<XmlException>(() => store.Load());
 				string computer = "<computer id=\"" + Guid.NewGuid() + "\" ipAddress=\"" + ProfileComputerIp + "\" selected=\"true\">";
-				File.WriteAllText(store.FilePath, "<computers version=\"3\">" + computer
+				File.WriteAllText(store.FilePath, "<computers version=\"4\">" + computer
 					+ "<additionalDirectory>C:\\Users\\Ivan*\\Certs</additionalDirectory></computer></computers>");
 				Check.Throws<ArgumentException>(() => store.Load());
-				File.WriteAllText(store.FilePath, "<computers version=\"3\">" + computer
+				File.WriteAllText(store.FilePath, "<computers version=\"4\">" + computer
 					+ "<additionalDirectory other=\"true\">C:\\Certs</additionalDirectory></computer></computers>");
 				Check.Throws<InvalidDataException>(() => store.Load());
 			}
@@ -145,72 +145,6 @@ namespace Telecom.Tests
 			Check.Equal("192.168.56.101", new ComputerProfile(Guid.NewGuid(), " 192.168.56.101 ", null, null, true).IpAddress);
 			Check.Equal("0.0.0.0", ComputerProfile.NormalizeIpAddress("0.0.0.0"));
 			Check.Equal("255.255.255.255", ComputerProfile.NormalizeIpAddress("255.255.255.255"));
-		}
-
-		// Переносит прежний список без потери идентификаторов паролей и без попытки разрешить имя в сети.
-		private static void CheckLegacyComputerProfiles()
-		{
-			using (var workspace = new TestWorkspace())
-			{
-				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
-				Guid addressId = Guid.NewGuid();
-				Guid nameId = Guid.NewGuid();
-				File.WriteAllText(store.FilePath, "<computers version=\"1\"><computer id=\"" + addressId
-					+ "\" address=\"" + ProfileComputerIp + "\" userName=\"LAB-PC\\reader\" selected=\"true\" />"
-					+ "<computer id=\"" + nameId + "\" address=\"LAB-PC\" userName=\"LAB-PC\\reader\" selected=\"true\" /></computers>");
-				List<ComputerProfile> profiles = store.Load();
-				Check.Equal(addressId, profiles[0].Id);
-				Check.Equal(ProfileComputerIp, profiles[0].IpAddress);
-				Check.Equal(string.Empty, profiles[0].DisplayName);
-				Check.Equal(@"LAB-PC\reader", profiles[0].UserName);
-				Check.Equal(true, profiles[0].Selected);
-				Check.Equal(0, profiles[0].AdditionalDirectories.Count);
-				Check.Equal(nameId, profiles[1].Id);
-				Check.Equal(string.Empty, profiles[1].IpAddress);
-				Check.Equal("LAB-PC", profiles[1].DisplayName);
-				Check.Equal(@"LAB-PC\reader", profiles[1].UserName);
-				Check.Equal(true, profiles[1].Selected);
-				Check.Equal(0, profiles[1].AdditionalDirectories.Count);
-				var access = new LabComputerAccess(workspace.DirectoryPath, ProfileComputerIp);
-				var connection = new WindowsSmbConnection(new WindowsCredentialStore(), access,
-					(path, user, password) => { throw new InvalidOperationException("Попытка входа без IPv4."); });
-				Check.Throws<InvalidOperationException>(() => connection.Connect(profiles[1], 3, CancellationToken.None));
-				Check.Equal(0, access.ConnectionChecks);
-				store.Save(profiles);
-				List<ComputerProfile> restored = store.Load();
-				Check.Equal(addressId, restored[0].Id);
-				Check.Equal(nameId, restored[1].Id);
-				Check.Equal("LAB-PC", restored[1].DisplayName);
-				Check.Equal(false, restored[1].HasIpAddress);
-				Check.Equal(@"LAB-PC\reader", restored[1].UserName);
-				Check.Equal(true, restored[1].Selected);
-				Check.Equal(0, restored[1].AdditionalDirectories.Count);
-			}
-		}
-
-		// Проверяет чтение списка версии 2 и повторную запись с прежними атрибутами профиля.
-		private static void CheckVersionTwoComputerProfiles()
-		{
-			using (var workspace = new TestWorkspace())
-			{
-				var store = new ComputerListFile(Path.Combine(workspace.DirectoryPath, "computers.xml"));
-				Guid id = Guid.NewGuid();
-				string xml = "<computers version=\"2\"><computer id=\"" + id + "\" ipAddress=\"" + ProfileComputerIp
-					+ "\" name=\"Подпись\" userName=\"LAB-PC\\reader\" selected=\"false\" /></computers>";
-				File.WriteAllText(store.FilePath, xml.Replace(ProfileComputerIp, "LAB-PC"));
-				Check.Throws<ArgumentException>(() => store.Load());
-				File.WriteAllText(store.FilePath, xml);
-				List<ComputerProfile> profiles = store.Load();
-				Check.Equal(0, profiles[0].AdditionalDirectories.Count);
-				store.Save(profiles);
-				ComputerProfile restored = store.Load()[0];
-				Check.Equal(id, restored.Id);
-				Check.Equal(ProfileComputerIp, restored.IpAddress);
-				Check.Equal("Подпись", restored.DisplayName);
-				Check.Equal(@"LAB-PC\reader", restored.UserName);
-				Check.Equal(false, restored.Selected);
-				Check.Equal(0, restored.AdditionalDirectories.Count);
-			}
 		}
 
 		// Проверяет, что редактор показывает независимые поля, отклоняет имя и сохраняет пароль при переименовании.

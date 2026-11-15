@@ -472,7 +472,7 @@ namespace Telecom.App
 				return;
 			}
 
-			var profiles = computers.Select(item => item.Profile).Where(profile => profile.IsLocal || profile.HasIpAddress)
+			var profiles = computers.Select(item => item.Profile)
 				.ToDictionary(profile => profile.IsLocal ? Environment.MachineName : profile.IpAddress, StringComparer.OrdinalIgnoreCase);
 			scanCancellation = new CancellationTokenSource();
 			CancellationToken token = scanCancellation.Token;
@@ -1415,8 +1415,7 @@ namespace Telecom.App
 						return DisplayName + " (" + Environment.MachineName + ")";
 					}
 
-					string address = Profile.HasIpAddress ? IpAddress : "IPv4 не задан";
-					return DisplayName.Length == 0 ? address : DisplayName + " (" + address + ")";
+					return DisplayName.Length == 0 ? IpAddress : DisplayName + " (" + IpAddress + ")";
 				}
 			}
 			public string Account { get { return Profile.IsLocal ? "Текущий пользователь" : Profile.HasUserName ? Profile.UserName : "Не задана"; } }
@@ -1430,7 +1429,7 @@ namespace Telecom.App
 			{
 				Profile = profile;
 				SavedSelection = profile.Selected;
-				ConnectionStatus = profile.IsLocal ? "Локально" : profile.HasIpAddress ? "Не подключено" : "Укажите IPv4";
+				ConnectionStatus = profile.IsLocal ? "Локально" : "Не подключено";
 			}
 		}
 	}

@@ -16,7 +16,6 @@ namespace Telecom.Core.Computers
 		public IList<string> AdditionalDirectories { get; private set; }
 		public bool Selected { get; set; }
 		public bool IsLocal { get; private set; }
-		public bool HasIpAddress { get { return IpAddress.Length > 0; } }
 		public bool HasUserName { get { return UserName.Length > 0; } }
 
 		// Создаёт профиль ПК, использующий общие пути из XML.
@@ -25,7 +24,7 @@ namespace Telecom.Core.Computers
 		{
 		}
 
-		// Создаёт профиль с дополнительными путями для удалённого сканирования.
+		// Создаёт профиль удалённого ПК с дополнительными путями для сканирования.
 		public ComputerProfile(Guid id, string ipAddress, string displayName, string userName, bool selected,
 			IEnumerable<string> additionalDirectories)
 			: this(id, ipAddress, displayName, userName, selected, additionalDirectories, false)
@@ -35,12 +34,12 @@ namespace Telecom.Core.Computers
 		// Локальный профиль имеет постоянную подпись и не использует сетевой адрес или учётные данные.
 		public static ComputerProfile CreateLocal(bool selected, IEnumerable<string> additionalDirectories = null)
 		{
-			return new ComputerProfile(Guid.Empty, string.Empty, "Этот компьютер", string.Empty, selected, additionalDirectories, true, true);
+			return new ComputerProfile(Guid.Empty, string.Empty, "Этот компьютер", string.Empty, selected, additionalDirectories, true);
 		}
 
-		// Пустой адрес допускается у локального ПК и старых записей, ожидающих ввода IPv4.
+		// Общая проверка полей: у удалённого ПК обязательны идентификатор и полный IPv4, у локального их нет.
 		private ComputerProfile(Guid id, string ipAddress, string displayName, string userName, bool selected,
-			IEnumerable<string> additionalDirectories, bool allowMissingAddress, bool isLocal = false)
+			IEnumerable<string> additionalDirectories, bool isLocal)
 		{
 			if (id == Guid.Empty && !isLocal)
 			{
@@ -49,7 +48,7 @@ namespace Telecom.Core.Computers
 
 			Id = id;
 			IsLocal = isLocal;
-			IpAddress = allowMissingAddress && ipAddress == string.Empty ? string.Empty : NormalizeIpAddress(ipAddress);
+			IpAddress = isLocal ? string.Empty : NormalizeIpAddress(ipAddress);
 			DisplayName = (displayName ?? string.Empty).Trim();
 			if (DisplayName.Length > 256 || DisplayName.Any(char.IsControl))
 			{
@@ -77,22 +76,6 @@ namespace Telecom.Core.Computers
 			}
 
 			return address;
-		}
-
-		// Загружает профиль с IPv4 и подписью, сохраняя запись без адреса до его заполнения администратором.
-		internal static ComputerProfile FromStored(Guid id, string ipAddress, string displayName, string userName, bool selected,
-			IEnumerable<string> additionalDirectories)
-		{
-			return new ComputerProfile(id, ipAddress, displayName, userName, selected, additionalDirectories, true);
-		}
-
-		// Старое сетевое имя становится подписью; автоматическое разрешение имён и смена сохранённого секрета не выполняются.
-		internal static ComputerProfile FromLegacy(Guid id, string address, string userName, bool selected)
-		{
-			string previousAddress = RemotePath.NormalizeComputerName(address);
-			bool isIpv4 = IsCanonicalIpv4(previousAddress);
-			return new ComputerProfile(id, isIpv4 ? previousAddress : string.Empty,
-				isIpv4 ? string.Empty : previousAddress, userName, selected, null, true);
 		}
 
 		// Сравнение с каноническим представлением исключает неоднозначные формы, принимаемые IPAddress.TryParse.
