@@ -52,6 +52,7 @@ namespace Telecom.Tests
 			AddTest(tests, "БД: отдельная проверка файлов и ключей хранилища по сохранённым путям", CheckLocationVerification);
 			AddTest(tests, "БД: устаревшая проверка не перезаписывает новый итог и не восстанавливает удалённую находку", CheckLocationCheckVersions);
 			AddTest(tests, "БД: один серийный номер в нескольких папках — одна строка", CheckDuplicateSerialNumber);
+			AddTest(tests, "БД: смена удостоверяющего центра у серийного номера попадает в журнал", CheckAuthorityChangeWarning);
 			AddTest(tests, "БД: неизвестная версия КриптоПро и текст с кавычками", CheckMissingVersionAndQuotes);
 			AddTest(tests, "БД: одновременные первые запуски не спорят за создание таблицы", CheckParallelTableCreation);
 			AddTest(tests, "БД: пересекающиеся записи не дают дублей и времени обновления раньше внесения", CheckParallelSave);
@@ -635,6 +636,24 @@ namespace Telecom.Tests
 			Check.Equal(1, result.Inserted);
 			Check.Equal(0, result.Updated);
 			Check.Equal(1, CountRows());
+		}
+
+		// Тот же серийный номер от другого УЦ: строка одна (ключ — серийный номер), но в журнале есть предупреждение.
+		private static void CheckAuthorityChangeWarning()
+		{
+			DropCertificatesTable();
+			var logger = new MemoryLogger();
+			var repository = new TestDatabase(databaseConnectionString, logger);
+			repository.Save(new[] { new CertificateInfo("0B", "Иванов", "УЦ 1", @"C:\Certs\a.cer", false, null) }, null);
+			repository.Save(new[] { new CertificateInfo("0B", "Иванов", "УЦ 1", @"C:\Certs\a.cer", false, null) }, null);
+			Check.Equal(0, logger.Messages.FindAll(message => message.StartsWith("Внимание:", StringComparison.Ordinal)).Count);
+
+			repository.Save(new[] { new CertificateInfo("0B", "Петров", "УЦ 2", @"D:\Certs\b.cer", false, null) }, null);
+			List<string> warnings = logger.Messages.FindAll(message => message.StartsWith("Внимание:", StringComparison.Ordinal));
+			Check.Equal(1, warnings.Count);
+			Check.Equal(true, warnings[0].Contains("«УЦ 1»") && warnings[0].Contains("«УЦ 2»"));
+			Check.Equal(1, CountRows());
+			Check.Equal("УЦ 2", ReadCertificate("0B").CertificationAuthority);
 		}
 
 		// Проверяет запись NULL вместо версии и сохранение текста с кавычками без искажения запроса.

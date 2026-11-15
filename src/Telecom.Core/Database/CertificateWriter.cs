@@ -14,8 +14,14 @@ namespace Telecom.Core.Database
 		// Блокировка строки держится до конца транзакции, поэтому два запуска не вставят один серийный номер дважды.
 		// Время берётся с сервера базы данных в UTC и не уменьшается, даже если запуски пересеклись во времени.
 		// UTC не зависит от часового пояса сервера; окно показывает время по местному поясу администратора.
+		// Возвращает: 1 — строка добавлена, 0 — обновлена; во втором столбце — прежний удостоверяющий центр.
 		private const string SaveCertificateSql = @"
 DECLARE @SavedAt DATETIME2(3) = SYSUTCDATETIME();
+DECLARE @PreviousAuthority NVARCHAR(512);
+
+SELECT @PreviousAuthority = CertificationAuthority
+FROM dbo.Certificates WITH (UPDLOCK, HOLDLOCK)
+WHERE SerialNumber = @SerialNumber;
 
 UPDATE dbo.Certificates WITH (UPDLOCK, HOLDLOCK)
 SET UpdatedAt = CASE WHEN @SavedAt > UpdatedAt THEN @SavedAt ELSE UpdatedAt END,
@@ -32,11 +38,11 @@ BEGIN
 		CryptoProVersion, IsCryptoProLicenseEmbedded, ExpiresAtUtc)
 	VALUES (@SerialNumber, @SavedAt, @SavedAt, @OwnerName, @CertificationAuthority,
 		@CryptoProVersion, @IsCryptoProLicenseEmbedded, @ExpiresAtUtc);
-	SELECT 1;
+	SELECT 1, CAST(NULL AS NVARCHAR(512));
 END
 ELSE
 BEGIN
-	SELECT 0;
+	SELECT 0, @PreviousAuthority;
 END";
 
 		private readonly DatabaseConnection database;
@@ -101,7 +107,9 @@ END";
 		}
 
 		// Обновляет строку сертификата или добавляет новую; возвращает true, если строка добавлена.
-		private static bool SaveCertificate(SqlConnection connection, SqlTransaction transaction,
+		// Если у этого серийного номера раньше был другой УЦ, пишет предупреждение: по условиям кейса ключ — только
+		// серийный номер, поэтому два разных сертификата разных УЦ с одинаковым номером окажутся в одной строке.
+		private bool SaveCertificate(SqlConnection connection, SqlTransaction transaction,
 			CertificateInfo certificate, string cryptoProVersion)
 		{
 			using (var command = new SqlCommand(SaveCertificateSql, connection, transaction))
@@ -114,7 +122,21 @@ END";
 					string.IsNullOrEmpty(cryptoProVersion) ? (object)DBNull.Value : cryptoProVersion;
 				command.Parameters.Add("@IsCryptoProLicenseEmbedded", SqlDbType.Bit).Value = certificate.IsCryptoProLicenseEmbedded;
 				command.Parameters.Add("@ExpiresAtUtc", SqlDbType.DateTime2).Value = (object)certificate.ExpiresAtUtc ?? DBNull.Value;
-				return (int)command.ExecuteScalar() == 1;
+				using (SqlDataReader reader = command.ExecuteReader())
+				{
+					reader.Read();
+					bool inserted = reader.GetInt32(0) == 1;
+					string previousAuthority = reader.IsDBNull(1) ? null : reader.GetString(1);
+					string authority = certificate.CertificationAuthority ?? string.Empty;
+					if (previousAuthority != null && !string.Equals(previousAuthority, authority, StringComparison.Ordinal))
+					{
+						logger.Info("Внимание: сертификат с серийным номером " + certificate.SerialNumber
+							+ " уже был в базе с удостоверяющим центром «" + previousAuthority + "», а теперь найден с «" + authority
+							+ "». Возможно, это два разных сертификата с одинаковым номером; в таблице остаётся последний.");
+					}
+
+					return inserted;
+				}
 			}
 		}
 
