@@ -17,16 +17,19 @@ namespace Telecom.Tests
 			internal readonly List<string> ReadPaths = new List<string>();
 			internal Action OnRead;
 
+			// Проверка наличия читает только сохранённые пути; перечисление файлов здесь считается ошибкой.
 			public IEnumerable<string> GetFiles(string directoryPath)
 			{
 				throw new InvalidOperationException("Адресная проверка не должна перечислять файлы.");
 			}
 
+			// Перечисление папок в проверке наличия не используется.
 			public IEnumerable<string> GetDirectories(string directoryPath)
 			{
 				throw new InvalidOperationException("Адресная проверка не должна обходить папки.");
 			}
 
+			// Сообщает, является ли путь ссылкой, по списку тестовых ссылок.
 			public bool IsReparsePoint(string path)
 			{
 				Exception failure;
@@ -41,11 +44,13 @@ namespace Telecom.Tests
 				return LinkedPaths.Contains(path);
 			}
 
+			// Назначение ссылок в проверке наличия не используется.
 			public string GetReparsePointTarget(string path)
 			{
 				throw new InvalidOperationException("Адресная проверка не должна переходить по ссылке.");
 			}
 
+			// Отдаёт содержимое тестового файла и запоминает прочитанный путь.
 			public byte[] ReadAllBytes(string filePath)
 			{
 				ReadPaths.Add(filePath);

@@ -20,6 +20,7 @@ namespace Telecom.Core.Locations
 		private readonly ILogger logger;
 		private readonly CertificateParser parser = new CertificateParser();
 
+		// connectSmb устанавливает сеанс с удалённым ПК перед чтением файлов; для локального ПК не вызывается.
 		public CertificateLocationChecker(ICertificateFileSystem fileSystem, IMachineCertificateStore machineStore,
 			Action<ComputerProfile, CancellationToken> connectSmb, ILogger logger)
 		{
@@ -215,12 +216,14 @@ namespace Telecom.Core.Locations
 			}
 		}
 
+		// Пишет ошибку в журнал и помечает места как «не удалось проверить».
 		private void RecordFailure(string source, IEnumerable<CertificateLocationCheck> locations, Exception exception)
 		{
 			logger.Error("Не удалось проверить наличие сертификата. Источник: " + source, exception);
 			RecordResult(locations, CertificateLocationStatus.Unverified);
 		}
 
+		// Проставляет итог и время проверки всем указанным местам.
 		private static void RecordResult(IEnumerable<CertificateLocationCheck> locations, CertificateLocationStatus status)
 		{
 			DateTime checkedAt = DateTime.UtcNow;

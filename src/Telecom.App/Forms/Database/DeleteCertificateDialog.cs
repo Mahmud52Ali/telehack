@@ -1,8 +1,9 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Telecom.App.Theming;
 
-namespace Telecom.App
+namespace Telecom.App.Forms.Database
 {
 	internal sealed class DeleteCertificateDialog : Form
 	{

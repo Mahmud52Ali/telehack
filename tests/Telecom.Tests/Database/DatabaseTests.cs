@@ -10,7 +10,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Telecom.App;
+using Telecom.App.Forms;
 using Telecom.App.Windows;
 using Telecom.Core.Certificates;
 using Telecom.Core.Computers;
@@ -272,6 +272,7 @@ namespace Telecom.Tests
 			}
 		}
 
+		// Проверяет сохранённый итог проверки наличия для одного места обнаружения.
 		private static void CheckLocationStatus(DataTable rows, string serialNumber, string computerAddress,
 			string sourcePath, CertificateLocationStatus expected)
 		{

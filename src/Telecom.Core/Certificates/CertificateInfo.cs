@@ -18,6 +18,7 @@ namespace Telecom.Core.Certificates
 		{
 		}
 
+		// Хранит открытые сведения сертификата, путь обнаружения и дату окончания действия в UTC.
 		public CertificateInfo(string serialNumber, string ownerName, string certificationAuthority,
 			string sourcePath, bool isCryptoProLicenseEmbedded, DateTime? expiresAtUtc)
 		{

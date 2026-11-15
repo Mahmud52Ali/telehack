@@ -6,7 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 using System.Xml;
-using Telecom.App;
+using Telecom.App.Forms;
 using Telecom.App.Windows;
 using Telecom.Core.Common;
 using Telecom.Core.Computers;

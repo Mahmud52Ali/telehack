@@ -184,16 +184,19 @@ namespace Telecom.Tests
 			Check.Equal(3, logger.Errors.Count);
 		}
 
+		// Профиль удалённого ПК для проверок наличия.
 		private static ComputerProfile LocationProfile()
 		{
 			return new ComputerProfile(Guid.NewGuid(), LocationComputerIp, "Тестовый ПК", "reader", false);
 		}
 
+		// Создаёт задание проверки с фиксированной версией строки.
 		private static CertificateLocationCheck LocationCheck(string serialNumber, string sourcePath)
 		{
 			return new CertificateLocationCheck(serialNumber, LocationComputerIp, sourcePath, DateTime.Today, DateTime.Today);
 		}
 
+		// Сверяет итоги проверки с ожидаемыми статусами по порядку.
 		private static void CheckLocationResults(IList<CertificateLocationCheck> locations, params CertificateLocationStatus[] statuses)
 		{
 			Check.Equal(statuses.Length, locations.Count);

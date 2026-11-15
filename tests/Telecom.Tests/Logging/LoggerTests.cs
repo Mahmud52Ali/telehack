@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Telecom.App;
+using Telecom.App.Forms;
 using Telecom.App.Windows;
 using Telecom.Core.Computers;
 using Telecom.Core.Logging;
@@ -47,8 +47,7 @@ namespace Telecom.Tests
 						FormField<TextBox>(panel, "connectionInput").Text = "Server=tcp:127.0.0.1," + port
 							+ ";Database=TelecomLoggingTests;User ID=telecom_logging_test;Password=dummy-password;Connect Timeout=1";
 						Label status = FormField<Label>(panel, "databaseStatus");
-						panel.GetType().GetMethod("OnCheckDatabase", BindingFlags.Instance | BindingFlags.NonPublic)
-							.Invoke(panel, new object[] { null, EventArgs.Empty });
+						InvokeMethod(panel, "OnCheckDatabase", null, EventArgs.Empty);
 						Check.Equal(0, logger.Errors.Count);
 						Check.Equal(false, FormField<Button>(panel, "checkDatabase").Enabled);
 						string pendingStatus = status.Text;

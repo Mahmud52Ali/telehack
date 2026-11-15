@@ -1,9 +1,10 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Telecom.App.Theming;
 using Telecom.Core.Computers;
 
-namespace Telecom.App
+namespace Telecom.App.Forms.Scan
 {
 	internal sealed class ComputerProfileDialog : Form
 	{

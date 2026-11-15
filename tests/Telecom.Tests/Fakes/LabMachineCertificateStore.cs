@@ -41,6 +41,7 @@ namespace Telecom.Tests
 				read(profile, cancellationToken, readCertificate, reportError);
 			}
 
+			// Передаёт адресное чтение записей тестовому обработчику и считает обращения.
 			public void ReadEntries(ComputerProfile profile, IEnumerable<string> entries, CancellationToken cancellationToken,
 				Action<string, byte[]> readCertificate, Action<string, Exception> reportError)
 			{

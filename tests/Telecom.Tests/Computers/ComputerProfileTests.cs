@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using System.Xml;
-using Telecom.App;
+using Telecom.App.Forms;
 using Telecom.App.Windows;
 using Telecom.Core.Certificates;
 using Telecom.Core.Common;
@@ -151,7 +151,7 @@ namespace Telecom.Tests
 		{
 			var previous = new ComputerProfile(Guid.NewGuid(), ProfileComputerIp, "Прежняя подпись", @"LAB-PC\reader", true,
 				new[] { @"C:\Certs", @"D:\Profiles\*\Certs" });
-			Type dialogType = typeof(MainForm).Assembly.GetType("Telecom.App.ComputerProfileDialog");
+			Type dialogType = typeof(MainForm).Assembly.GetType("Telecom.App.Forms.Scan.ComputerProfileDialog");
 			ConstructorInfo constructor = dialogType.GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance)[0];
 			MethodInfo save = dialogType.GetMethod("OnSave", BindingFlags.NonPublic | BindingFlags.Instance);
 			using (var dialog = (Form)constructor.Invoke(new object[] { null }))
@@ -500,8 +500,7 @@ namespace Telecom.Tests
 						File.WriteAllText(configurationPath, configurationXml
 							+ "<connectionString>Server=localhost</connectionString></scanSettings>");
 						access.AuthenticatedComputers.Clear();
-						MethodInfo runComputers = typeof(MainForm).GetMethod("RunComputers", BindingFlags.NonPublic | BindingFlags.Instance);
-						runComputers.Invoke(form, new object[] { true });
+						InvokeMethod(form, "RunComputers", true);
 						WaitForFormIdle(form);
 						Check.Equal(6, authorizations);
 						Check.Equal(4, machineStore.Reads);
@@ -520,31 +519,6 @@ namespace Telecom.Tests
 					}
 				}
 			}
-		}
-
-		// Проверяет публичное поведение окна, не добавляя в продукт тестовых команд и режимов.
-		private static T FormField<T>(Control control, string name)
-		{
-			return (T)control.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(control);
-		}
-
-		// Обрабатывает WinForms-продолжения асинхронных операций с ограниченным ожиданием.
-		private static void WaitForFormIdle(MainForm form)
-		{
-			var timer = Stopwatch.StartNew();
-			do
-			{
-				Application.DoEvents();
-				if (FormField<CancellationTokenSource>(form, "scanCancellation") == null)
-				{
-					return;
-				}
-
-				Thread.Sleep(1);
-			}
-			while (timer.Elapsed < TimeSpan.FromSeconds(10));
-
-			throw new TimeoutException("Окно не завершило операцию с тестовыми адаптерами.");
 		}
 	}
 }

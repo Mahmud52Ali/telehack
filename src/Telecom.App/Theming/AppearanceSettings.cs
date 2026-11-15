@@ -4,7 +4,7 @@ using System.IO;
 using System.Xml;
 using Telecom.Core.Common;
 
-namespace Telecom.App
+namespace Telecom.App.Theming
 {
 	internal enum AppearanceTheme
 	{

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows.Forms;
 using Microsoft.VisualBasic.ApplicationServices;
+using Telecom.App.Forms;
 using Telecom.Core.Logging;
 
 namespace Telecom.App
@@ -25,7 +26,7 @@ namespace Telecom.App
 			protected override void OnCreateMainForm()
 			{
 				logger.Info("Приложение запущено.");
-				MainForm = new Telecom.App.MainForm(logger);
+				MainForm = new Telecom.App.Forms.MainForm(logger);
 				Started = true;
 			}
 

@@ -8,7 +8,7 @@ using System.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Windows.Forms;
-using Telecom.App;
+using Telecom.App.Forms;
 using Telecom.App.Windows;
 using Telecom.Core.Access;
 using Telecom.Core.Certificates;
@@ -69,7 +69,7 @@ namespace Telecom.Tests
 		private static void CheckLocalComputerDialog()
 		{
 			var local = ComputerProfile.CreateLocal(false, new[] { @"D:\Certificates" });
-			Type dialogType = typeof(MainForm).Assembly.GetType("Telecom.App.ComputerProfileDialog");
+			Type dialogType = typeof(MainForm).Assembly.GetType("Telecom.App.Forms.Scan.ComputerProfileDialog");
 			ConstructorInfo constructor = dialogType.GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance)[0];
 			MethodInfo save = dialogType.GetMethod("OnSave", BindingFlags.NonPublic | BindingFlags.Instance);
 			using (var dialog = (Form)constructor.Invoke(new object[] { local }))
@@ -220,8 +220,7 @@ namespace Telecom.Tests
 					Check.Equal("Этот компьютер", grid.Rows[0].Cells[1].Value);
 					Check.Equal(false, FormField<Button>(form, "removeComputerButton").Enabled);
 					Check.Equal(false, FormField<Button>(form, "connectButton").Enabled);
-					typeof(MainForm).GetMethod("OnRemoveComputer", BindingFlags.NonPublic | BindingFlags.Instance)
-						.Invoke(form, new object[] { form, EventArgs.Empty });
+					InvokeMethod(form, "OnRemoveComputer", form, EventArgs.Empty);
 					Check.Equal(1, grid.Rows.Count);
 					using (var timer = new System.Windows.Forms.Timer { Interval = 10 })
 					{

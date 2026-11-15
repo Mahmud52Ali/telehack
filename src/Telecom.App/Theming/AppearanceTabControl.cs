@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace Telecom.App
+namespace Telecom.App.Theming
 {
 	internal sealed class AppearanceTabControl : TabControl
 	{
@@ -21,9 +21,9 @@ namespace Telecom.App
 		// Рисует подписи в прямоугольниках, рассчитанных штатным TabControl.
 		protected override void OnPaint(PaintEventArgs e)
 		{
-			e.Graphics.Clear(WindowAppearance.DarkSurface);
-			using (var active = new SolidBrush(WindowAppearance.DarkButton))
-			using (var border = new Pen(WindowAppearance.DarkBorder))
+			e.Graphics.Clear(ThemePalette.DarkSurface);
+			using (var active = new SolidBrush(ThemePalette.DarkButton))
+			using (var border = new Pen(ThemePalette.DarkBorder))
 			{
 				Rectangle frame = DisplayRectangle;
 				frame.Inflate(1, 1);
@@ -44,13 +44,13 @@ namespace Telecom.App
 						e.Graphics.DrawRectangle(border, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
 					}
 
-					Color text = page.Enabled ? WindowAppearance.DarkText : WindowAppearance.DarkMutedText;
+					Color text = page.Enabled ? ThemePalette.DarkText : ThemePalette.DarkMutedText;
 					TextRenderer.DrawText(e.Graphics, page.Text, Font, bounds, text,
 						TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
 					if (selected && Focused && ShowFocusCues)
 					{
 						bounds.Inflate(-2, -2);
-						ControlPaint.DrawFocusRectangle(e.Graphics, bounds, text, WindowAppearance.DarkButton);
+						ControlPaint.DrawFocusRectangle(e.Graphics, bounds, text, ThemePalette.DarkButton);
 					}
 				}
 			}
