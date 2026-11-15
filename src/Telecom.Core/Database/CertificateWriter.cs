@@ -9,7 +9,7 @@ using Telecom.Core.Logging;
 namespace Telecom.Core.Database
 {
 	// Запись результатов сканирования: обновление строки по серийному номеру или вставка новой, без дублей.
-	public sealed class CertificateWriter
+	public sealed class CertificateWriter : ICertificateWriter
 	{
 		// Блокировка строки держится до конца транзакции, поэтому два запуска не вставят один серийный номер дважды.
 		// Время берётся с сервера базы данных и не уменьшается, даже если запуски пересеклись во времени.

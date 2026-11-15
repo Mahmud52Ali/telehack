@@ -18,6 +18,20 @@ namespace Telecom.Core.Computers
 		public bool IsLocal { get; private set; }
 		public bool HasUserName { get { return UserName.Length > 0; } }
 
+		// Подпись для журнала и сообщений: «Название (IPv4)», только IPv4 или «Этот компьютер (ИМЯ-ПК)».
+		public string Description
+		{
+			get
+			{
+				if (IsLocal)
+				{
+					return DisplayName + " (" + Environment.MachineName + ")";
+				}
+
+				return DisplayName.Length == 0 ? IpAddress : DisplayName + " (" + IpAddress + ")";
+			}
+		}
+
 		// Создаёт профиль ПК, использующий общие пути из XML.
 		public ComputerProfile(Guid id, string ipAddress, string displayName, string userName, bool selected)
 			: this(id, ipAddress, displayName, userName, selected, null)

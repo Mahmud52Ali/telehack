@@ -1064,6 +1064,7 @@ namespace Telecom.App
 		}
 
 		// Сначала подключает выбранные ПК, затем сканирует доступные; сбой одной учётки не останавливает остальные.
+		// Сама работа выполняется в ScanCoordinator, окно только показывает её ход.
 		private async Task RunComputers(bool scan)
 		{
 			if (scanCancellation != null || !profilesLoaded || !computersButton.Checked)
@@ -1102,99 +1103,20 @@ namespace Telecom.App
 				certificatesGrid.DataSource = certificates;
 			}
 
+			Dictionary<ComputerProfile, ComputerListItem> rows = selected.ToDictionary(item => item.Profile);
+			var progress = new Progress<ComputerProgress>(update => ShowProgress(rows[update.Profile], update, scan, errors, certificates));
 			try
 			{
 				ScanConfiguration configuration = await Task.Run(() => ScanConfigurationFile.Load(configurationFilePath), token);
-				var connected = new List<ComputerListItem>();
-				foreach (ComputerListItem item in selected)
-				{
-					token.ThrowIfCancellationRequested();
-					if (item.Profile.IsLocal)
-					{
-						connected.Add(item);
-						continue;
-					}
-
-					item.ConnectionStatus = "Подключение…";
-					RefreshComputers();
-					statusLabel.Text = "Подключение к " + item.Description + "…";
-					try
-					{
-						logger.Info("Подключение SMB к " + item.Description);
-						await Task.Run(() => connection.Connect(item.Profile, configuration.ConnectionTimeoutSeconds, token), token);
-						item.ConnectionStatus = "SMB подключено";
-						connected.Add(item);
-						logger.Info("Соединение SMB установлено: " + item.Description);
-					}
-					catch (OperationCanceledException)
-					{
-						item.ConnectionStatus = "Подключение отменено";
-						throw;
-					}
-					catch (Exception exception)
-					{
-						if (!ErrorClassifier.IsRecoverable(exception) && !(exception is InvalidOperationException))
-						{
-							throw;
-						}
-
-						item.ConnectionStatus = exception.Message;
-						item.ScanStatus = scan ? "Пропущено: нет подключения" : item.ScanStatus;
-						errors.Add(new ScanError(item.Description, exception.Message, ErrorClassifier.Classify(exception)));
-						logger.Error("Ошибка подключения к " + item.Description, exception);
-					}
-
-					RefreshComputers();
-				}
-
-				int completed = 0;
-				int databaseFailures = 0;
-				if (scan)
-				{
-					var scanner = new ComputerScanner(computerAccess, new CertificateParser(), logger);
-					foreach (ComputerListItem item in connected)
-					{
-						token.ThrowIfCancellationRequested();
-						item.ScanStatus = "Сканирование…";
-						RefreshComputers();
-						statusLabel.Text = "Сканирование " + item.Description + "…";
-						ScanConfiguration computerConfiguration = configuration.WithAdditionalDirectories(item.Profile.AdditionalDirectories);
-						ComputerScanResult result = await Task.Run(() => scanner.ScanProfile(item.Profile, computerConfiguration,
-							machineCertificateStore, token), token);
-						foreach (CertificateInfo certificate in result.Certificates)
-						{
-							certificates.Add(certificate);
-						}
-
-						foreach (ScanError error in result.Errors)
-						{
-							errors.Add(error);
-						}
-
-						item.ScanStatus = DescribeStatus(result.Status) + "; сертификатов: " + result.Certificates.Count;
-						item.CryptoProVersion = DescribeCryptoPro(result);
-						RefreshComputers();
-						if (result.Status == ComputerScanStatus.Cancelled)
-						{
-							throw new OperationCanceledException(token);
-						}
-
-						completed++;
-						if (!await SaveToDatabase(item, configuration, result, token))
-						{
-							databaseFailures++;
-						}
-
-						RefreshComputers();
-						token.ThrowIfCancellationRequested();
-					}
-				}
-
-				string summary = scan
-					? string.Format("Обработано ПК: {0} из {1}; сертификатов: {2}. ", completed, selected.Count, certificates.Count)
-					: string.Format("Подключено удалённых ПК: {0} из {1}. ", connected.Count, selected.Count);
-				statusLabel.Text = summary + string.Format("Ошибок подключения и чтения: {0}.{1}", errors.Count,
-					databaseFailures == 0 ? string.Empty : " Ошибок записи в БД: " + databaseFailures + ".");
+				var coordinator = new ScanCoordinator(computerAccess, connection, machineCertificateStore,
+					connectionString => new CertificateWriter(new DatabaseConnection(connectionString, logger), logger), logger);
+				List<ComputerProfile> profiles = selected.Select(item => item.Profile).ToList();
+				ScanRunSummary summary = await Task.Run(() => coordinator.Run(profiles, scan, configuration, progress, token), token);
+				string processed = scan
+					? string.Format("Обработано ПК: {0} из {1}; сертификатов: {2}. ", summary.Completed, selected.Count, certificates.Count)
+					: string.Format("Подключено удалённых ПК: {0} из {1}. ", summary.Connected, selected.Count);
+				statusLabel.Text = processed + string.Format("Ошибок подключения и чтения: {0}.{1}", errors.Count,
+					summary.DatabaseFailures == 0 ? string.Empty : " Ошибок записи в БД: " + summary.DatabaseFailures + ".");
 			}
 			catch (OperationCanceledException)
 			{
@@ -1223,52 +1145,64 @@ namespace Telecom.App
 			}
 		}
 
-		// Сохраняет находки одного ПК в фоне и выводит исход записи в его строке.
-		private async Task<bool> SaveToDatabase(ComputerListItem item, ScanConfiguration configuration, ComputerScanResult result,
-			CancellationToken token)
+		// Переводит событие хода работы в статусы строки ПК и пополняет таблицы сертификатов и ошибок.
+		private void ShowProgress(ComputerListItem item, ComputerProgress update, bool scan,
+			IList<ScanError> errors, IList<CertificateInfo> certificates)
 		{
-			if (result.Certificates.Count == 0)
+			switch (update.Stage)
 			{
-				item.DatabaseStatus = "Нет сертификатов";
-				return true;
+				case ComputerStage.Connecting:
+					item.ConnectionStatus = "Подключение…";
+					statusLabel.Text = "Подключение к " + item.Description + "…";
+					break;
+				case ComputerStage.Connected:
+					item.ConnectionStatus = "SMB подключено";
+					break;
+				case ComputerStage.ConnectionCancelled:
+					item.ConnectionStatus = "Подключение отменено";
+					break;
+				case ComputerStage.ConnectionFailed:
+					item.ConnectionStatus = update.Error.Message;
+					item.ScanStatus = scan ? "Пропущено: нет подключения" : item.ScanStatus;
+					errors.Add(new ScanError(item.Description, update.Error.Message, ErrorClassifier.Classify(update.Error)));
+					break;
+				case ComputerStage.Scanning:
+					item.ScanStatus = "Сканирование…";
+					statusLabel.Text = "Сканирование " + item.Description + "…";
+					break;
+				case ComputerStage.Scanned:
+					foreach (CertificateInfo certificate in update.ScanResult.Certificates)
+					{
+						certificates.Add(certificate);
+					}
+
+					foreach (ScanError error in update.ScanResult.Errors)
+					{
+						errors.Add(error);
+					}
+
+					item.ScanStatus = DescribeStatus(update.ScanResult.Status) + "; сертификатов: " + update.ScanResult.Certificates.Count;
+					item.CryptoProVersion = DescribeCryptoPro(update.ScanResult);
+					break;
+				case ComputerStage.SaveSkippedNoCertificates:
+					item.DatabaseStatus = "Нет сертификатов";
+					break;
+				case ComputerStage.SaveSkippedNoDatabase:
+					item.DatabaseStatus = "Строка подключения не задана";
+					break;
+				case ComputerStage.Saving:
+					item.DatabaseStatus = "Запись…";
+					statusLabel.Text = "Запись в БД для " + item.Description + "…";
+					break;
+				case ComputerStage.Saved:
+					item.DatabaseStatus = string.Format("Добавлено: {0}, обновлено: {1}", update.SaveResult.Inserted, update.SaveResult.Updated);
+					break;
+				case ComputerStage.SaveFailed:
+					item.DatabaseStatus = "Ошибка записи. " + update.Error.Message;
+					break;
 			}
 
-			if (configuration.ConnectionString.Length == 0)
-			{
-				item.DatabaseStatus = "Строка подключения не задана";
-				return true;
-			}
-
-			token.ThrowIfCancellationRequested();
-			item.DatabaseStatus = "Запись…";
 			RefreshComputers();
-			statusLabel.Text = "Запись в БД для " + item.Description + "…";
-			try
-			{
-				CertificateSaveResult saved = await Task.Run(() =>
-				{
-					var writer = new CertificateWriter(new DatabaseConnection(configuration.ConnectionString, logger), logger);
-					return writer.Save(result.Certificates, result.CryptoProVersion, result.ComputerName);
-				}, token);
-				item.DatabaseStatus = string.Format("Добавлено: {0}, обновлено: {1}", saved.Inserted, saved.Updated);
-				return true;
-			}
-			catch (OperationCanceledException)
-			{
-				item.DatabaseStatus = "Запись отменена";
-				throw;
-			}
-			catch (Exception exception)
-			{
-				if (!(exception is DbException) && !(exception is InvalidOperationException) && !(exception is ArgumentException))
-				{
-					throw;
-				}
-
-				item.DatabaseStatus = "Ошибка записи. " + exception.Message;
-				logger.Error("Ошибка записи в базу данных для " + item.Description, exception);
-				return false;
-			}
 		}
 
 		// Обновляет статусы без повторного сохранения галочек через события привязки.
@@ -1407,18 +1341,7 @@ namespace Telecom.App
 			public bool SavedSelection { get; set; }
 			public string IpAddress { get { return Profile.IsLocal ? "—" : Profile.IpAddress; } }
 			public string DisplayName { get { return Profile.DisplayName; } }
-			public string Description
-			{
-				get
-				{
-					if (Profile.IsLocal)
-					{
-						return DisplayName + " (" + Environment.MachineName + ")";
-					}
-
-					return DisplayName.Length == 0 ? IpAddress : DisplayName + " (" + IpAddress + ")";
-				}
-			}
+			public string Description { get { return Profile.Description; } }
 			public string Account { get { return Profile.IsLocal ? "Текущий пользователь" : Profile.HasUserName ? Profile.UserName : "Не задана"; } }
 			public string ConnectionStatus { get; set; }
 			public string ScanStatus { get; set; }

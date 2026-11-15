@@ -8,7 +8,7 @@ using Telecom.Core.Computers;
 
 namespace Telecom.App
 {
-	public sealed class WindowsSmbConnection
+	public sealed class WindowsSmbConnection : IComputerConnector
 	{
 		private readonly WindowsCredentialStore credentials;
 		private readonly IComputerAccess access;

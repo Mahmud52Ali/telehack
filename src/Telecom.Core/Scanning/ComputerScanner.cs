@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.RegularExpressions;
 using System.Threading;
 using Telecom.Core.Access;
 using Telecom.Core.Certificates;
@@ -108,7 +107,7 @@ namespace Telecom.Core.Scanning
 					storeChecked |= ReadMachineStore(profile, machineStore, result, cancellationToken);
 				}
 
-				FindCryptoPro(configuration, result, cancellationToken, isLocal);
+				new CryptoProVersionReader(access, logger).Read(configuration, result, isLocal, cancellationToken);
 				result.Status = GetStatus(result, storeChecked);
 			}
 			catch (OperationCanceledException)
@@ -181,57 +180,6 @@ namespace Telecom.Core.Scanning
 
 				RecordError(source, exception, result);
 			}
-		}
-
-		// Читает ProductVersion csptest.exe из настроенных путей; отсутствие файла не равно отказу доступа.
-		private void FindCryptoPro(ScanConfiguration configuration, ComputerScanResult result, CancellationToken cancellationToken, bool isLocal)
-		{
-			int errorsBefore = result.Errors.Count;
-			foreach (string localPath in configuration.CryptoProExecutables)
-			{
-				cancellationToken.ThrowIfCancellationRequested();
-				string remotePath = isLocal ? localPath : RemotePath.ToUnc(result.ComputerName, localPath);
-				try
-				{
-					string version = NormalizeProductVersion(access.GetProductVersion(remotePath));
-					result.CryptoProVersion = version;
-					result.CryptoProSource = remotePath;
-					result.CryptoProStatus = CryptoProStatus.Found;
-					logger.Info("КриптоПро на " + result.ComputerName + ": " + version + "; источник: " + remotePath);
-					return;
-				}
-				catch (Exception exception)
-				{
-					if (!ErrorClassifier.IsRecoverable(exception))
-					{
-						throw;
-					}
-
-					if (ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
-					{
-						logger.Info("Не найден файл проверки КриптоПро: " + remotePath + Environment.NewLine + exception);
-					}
-					else
-					{
-						RecordError(remotePath, exception, result);
-					}
-				}
-			}
-
-			result.CryptoProStatus = result.Errors.Count == errorsBefore ? CryptoProStatus.NotFound : CryptoProStatus.Error;
-		}
-
-		// Нормализует ProductVersion, сохраняя ненулевую четвёртую часть версии.
-		public static string NormalizeProductVersion(string value)
-		{
-			Match match = Regex.Match(value ?? string.Empty, @"^\s*(\d+\.\d+\.\d+(?:\.\d+)?)(?:\s.*)?$");
-			Version version;
-			if (!match.Success || !Version.TryParse(match.Groups[1].Value, out version))
-			{
-				throw new InvalidDataException("В файле csptest.exe отсутствует корректная версия продукта.");
-			}
-
-			return version.Revision <= 0 ? version.ToString(3) : version.ToString(4);
 		}
 
 		// Не объявляет полный успех при непроверенных ресурсах, даже если часть сертификатов найдена.

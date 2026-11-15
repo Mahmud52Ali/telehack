@@ -314,12 +314,12 @@ namespace Telecom.Tests
 		// Проверяет версии с тремя и четырьмя компонентами, суффиксом и некорректными значениями.
 		private static void CheckProductVersionNormalization()
 		{
-			Check.Equal("5.0.13003", ComputerScanner.NormalizeProductVersion("5.0.13003.0"));
-			Check.Equal("5.0.13003", ComputerScanner.NormalizeProductVersion("5.0.13003"));
-			Check.Equal("5.0.13003.12", ComputerScanner.NormalizeProductVersion("5.0.13003.12"));
-			Check.Equal("5.0.13003", ComputerScanner.NormalizeProductVersion("5.0.13003.0 (KC1)"));
-			Check.Throws<InvalidDataException>(() => ComputerScanner.NormalizeProductVersion(null));
-			Check.Throws<InvalidDataException>(() => ComputerScanner.NormalizeProductVersion("not a version"));
+			Check.Equal("5.0.13003", CryptoProVersionReader.NormalizeProductVersion("5.0.13003.0"));
+			Check.Equal("5.0.13003", CryptoProVersionReader.NormalizeProductVersion("5.0.13003"));
+			Check.Equal("5.0.13003.12", CryptoProVersionReader.NormalizeProductVersion("5.0.13003.12"));
+			Check.Equal("5.0.13003", CryptoProVersionReader.NormalizeProductVersion("5.0.13003.0 (KC1)"));
+			Check.Throws<InvalidDataException>(() => CryptoProVersionReader.NormalizeProductVersion(null));
+			Check.Throws<InvalidDataException>(() => CryptoProVersionReader.NormalizeProductVersion("not a version"));
 		}
 
 		// Проверяет сохранение уже собранных данных и отсутствие сетевых вызовов при предварительной отмене.
