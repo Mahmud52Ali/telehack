@@ -148,7 +148,7 @@ namespace Telecom.Tests
 			}
 		}
 
-		// Проверяет, что сбой записи виден вызывающему коду, а доступный журнал получает ошибку.
+		// Проверяет, что сбой записи не бросает исключение, но виден через LastWriteError, а доступный журнал получает ошибку.
 		private static void CheckUnavailableLog()
 		{
 			using (var workspace = new TestWorkspace())
@@ -156,9 +156,17 @@ namespace Telecom.Tests
 				string unavailablePath = Path.Combine(workspace.DirectoryPath, "missing", "test.log");
 				string errorLogPath = Path.Combine(workspace.DirectoryPath, "telecomErrors.log");
 				var logger = new FileLogger(unavailablePath, errorLogPath);
-				Check.Throws<DirectoryNotFoundException>(() => logger.Info("Информационное событие"));
-				Check.Throws<DirectoryNotFoundException>(() => logger.Error("Ошибка", new InvalidOperationException("log-probe")));
+				logger.Info("Информационное событие");
+				Check.Equal(true, logger.LastWriteError is DirectoryNotFoundException);
+				logger.Error("Ошибка", new InvalidOperationException("log-probe"));
+				Check.Equal(true, logger.LastWriteError is DirectoryNotFoundException);
 				Check.Equal(true, File.ReadAllText(errorLogPath).Contains("log-probe"));
+
+				var working = new FileLogger(errorLogPath);
+				working.Info(string.Empty);
+				Check.Equal(null, working.LastWriteError);
+				string[] lines = File.ReadAllLines(errorLogPath);
+				CheckTimestamp(lines[lines.Length - 1]);
 			}
 		}
 
