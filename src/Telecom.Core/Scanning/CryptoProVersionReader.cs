@@ -49,7 +49,7 @@ namespace Telecom.Core.Scanning
 
 					if (ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
 					{
-						logger.Info("Не найден файл проверки КриптоПро: " + path + Environment.NewLine + exception);
+						logger.Info("Не найден файл проверки КриптоПро: " + path);
 					}
 					else
 					{

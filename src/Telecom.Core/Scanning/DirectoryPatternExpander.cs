@@ -7,6 +7,9 @@ using Telecom.Core.Logging;
 
 namespace Telecom.Core.Scanning
 {
+	// Раскрывает маски путей вида C:\Users\*\AppData\...: звёздочка заменяется именем каждой подпапки.
+	// Ссылки (junction, symlink) не обходятся, чтобы не уйти в цикл или за пределы профилей;
+	// исключение — служебные ссылки Windows в папке Users («All Users», «Default User»), они просто пропускаются.
 	public sealed class DirectoryPatternExpander
 	{
 		private const string UserCertificateStorePatternSuffix = @"\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates";
@@ -20,13 +23,14 @@ namespace Telecom.Core.Scanning
 			this.logger = logger;
 		}
 
-		// Раскрывает полные сегменты *; отсутствие папки у отдельного профиля допустимо, отказ доступа — ошибка.
+		// Возвращает существующие папки по маске; путь без звёздочки возвращается как есть.
+		// Отсутствие папки у отдельного профиля — норма, отказ доступа и ссылки попадают в errors.
 		public IList<string> Expand(string pattern, IList<ScanError> errors, CancellationToken cancellationToken)
 		{
 			var expanded = new List<string>();
 			int errorsBefore = errors.Count;
 			ExpandBranch(pattern, expanded, errors, cancellationToken, false);
-			// Windows может ещё не создать каталоги «Личное» ни в одном доступном профиле.
+			// Для стандартной маски «Личного» пустой результат нормален: Windows создаёт папку только при первом сертификате.
 			if (pattern.IndexOf('*') >= 0 && expanded.Count == 0 && errors.Count == errorsBefore
 				&& !pattern.EndsWith(UserCertificateStorePatternSuffix, StringComparison.OrdinalIgnoreCase))
 			{
@@ -37,9 +41,10 @@ namespace Telecom.Core.Scanning
 			return expanded;
 		}
 
-		// Раскрывает каждую звёздочку и проверяет ссылки среди найденных каталогов.
+		// Раскрывает первую звёздочку шаблона: перебирает подпапки части до неё и для каждой продолжает с остатком шаблона.
+		// insideProfile = true, если шаблон уже получен подстановкой профиля: тогда отсутствие ветки у профиля — норма.
 		private void ExpandBranch(string pattern, IList<string> expanded, IList<ScanError> errors,
-			CancellationToken cancellationToken, bool expandedProfile)
+			CancellationToken cancellationToken, bool insideProfile)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 			int wildcard = pattern.IndexOf('*');
@@ -61,49 +66,7 @@ namespace Telecom.Core.Scanning
 				foreach (string child in fileSystem.GetDirectories(parent))
 				{
 					cancellationToken.ThrowIfCancellationRequested();
-					try
-					{
-						if (fileSystem.IsReparsePoint(child))
-						{
-							if (IsProfileCompatibilityLink(parent, child))
-							{
-								logger.Info("Пропущена системная ссылка в папке профилей: " + child);
-								continue;
-							}
-
-							throw new IOException("Профиль или каталог-ссылка не проверялся.");
-						}
-
-						string candidate = child.TrimEnd('\\') + suffix;
-						if (suffix.IndexOf('*') >= 0)
-						{
-							ExpandBranch(candidate, expanded, errors, cancellationToken, true);
-						}
-						else if (fileSystem.IsReparsePoint(candidate))
-						{
-							throw new IOException("Найденная папка является ссылкой и не проверялась.");
-						}
-						else
-						{
-							expanded.Add(candidate);
-						}
-					}
-					catch (Exception exception)
-					{
-						if (!ErrorClassifier.IsRecoverable(exception))
-						{
-							throw;
-						}
-
-						if (ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
-						{
-							logger.Info("У профиля нет настроенной папки: " + child + suffix + Environment.NewLine + exception);
-						}
-						else
-						{
-							RecordError(child + suffix, exception, errors);
-						}
-					}
+					ExpandChild(parent, child, suffix, expanded, errors, cancellationToken);
 				}
 			}
 			catch (Exception exception)
@@ -113,18 +76,67 @@ namespace Telecom.Core.Scanning
 					throw;
 				}
 
-				if (expandedProfile && ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
-				{
-					logger.Info("У профиля нет настроенной ветки: " + pattern + Environment.NewLine + exception);
-				}
-				else
-				{
-					RecordError(pattern, exception, errors);
-				}
+				ReportFailure(pattern, exception, errors, insideProfile);
 			}
 		}
 
-		// Отличает штатные ссылки в корневой папке Users от ссылок на реальные профили.
+		// Подставляет одну подпапку вместо звёздочки и либо продолжает раскрытие, либо добавляет готовый путь.
+		private void ExpandChild(string parent, string child, string suffix, IList<string> expanded, IList<ScanError> errors,
+			CancellationToken cancellationToken)
+		{
+			try
+			{
+				if (fileSystem.IsReparsePoint(child))
+				{
+					if (IsProfileCompatibilityLink(parent, child))
+					{
+						logger.Info("Пропущена системная ссылка в папке профилей: " + child);
+						return;
+					}
+
+					throw new IOException("Профиль или каталог-ссылка не проверялся.");
+				}
+
+				string candidate = child.TrimEnd('\\') + suffix;
+				if (suffix.IndexOf('*') >= 0)
+				{
+					ExpandBranch(candidate, expanded, errors, cancellationToken, true);
+				}
+				else if (fileSystem.IsReparsePoint(candidate))
+				{
+					throw new IOException("Найденная папка является ссылкой и не проверялась.");
+				}
+				else
+				{
+					expanded.Add(candidate);
+				}
+			}
+			catch (Exception exception)
+			{
+				if (!ErrorClassifier.IsRecoverable(exception))
+				{
+					throw;
+				}
+
+				ReportFailure(child + suffix, exception, errors, true);
+			}
+		}
+
+		// Отсутствующая у профиля папка (если это допустимо) пишется в журнал одной строкой, остальное — ошибка в результате.
+		private void ReportFailure(string path, Exception exception, IList<ScanError> errors, bool missingIsNormal)
+		{
+			if (missingIsNormal && ErrorClassifier.Classify(exception) == ScanErrorKind.NotFound)
+			{
+				logger.Info("У профиля нет папки: " + path);
+			}
+			else
+			{
+				RecordError(path, exception, errors);
+			}
+		}
+
+		// Служебные ссылки Windows в корневой папке Users ведут в ProgramData или Users\Default того же диска.
+		// Назначение читается из метаданных ссылки, поэтому имя ссылки и язык Windows не важны.
 		private bool IsProfileCompatibilityLink(string parent, string child)
 		{
 			string root = Path.GetPathRoot(parent);
@@ -134,35 +146,39 @@ namespace Telecom.Core.Scanning
 				return false;
 			}
 
-			string target = fileSystem.GetReparsePointTarget(child);
+			string target = ResolveLinkTarget(root, fileSystem.GetReparsePointTarget(child));
+			return target != null
+				&& !target.Equals(child.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
+				&& (target.Equals(Path.Combine(root, "ProgramData"), StringComparison.OrdinalIgnoreCase)
+					|| target.Equals(Path.Combine(usersDirectory, "Default"), StringComparison.OrdinalIgnoreCase));
+		}
+
+		// Приводит назначение ссылки к виду сканируемого пути. У удалённого ПК ссылка хранит его локальный путь
+		// (C:\ProgramData), поэтому он переводится в \\IP\C$\ProgramData. Null — назначение неизвестно или на другом диске.
+		private static string ResolveLinkTarget(string root, string target)
+		{
 			if (string.IsNullOrEmpty(target))
 			{
-				return false;
+				return null;
 			}
 
-			// В метаданных удалённой ссылки хранится путь её ПК, например C:\ProgramData, а не UNC.
-			if (root.StartsWith(@"\\", StringComparison.Ordinal) && target.Length >= 3 && target[1] == ':' && target[2] == '\\')
+			bool remoteRoot = root.StartsWith(@"\\", StringComparison.Ordinal);
+			if (remoteRoot && target.Length >= 3 && target[1] == ':' && target[2] == '\\')
 			{
 				string share = root.TrimEnd('\\');
 				string drive = Path.GetFileName(share);
 				if (drive.Length != 2 || drive[1] != '$' || char.ToUpperInvariant(drive[0]) != char.ToUpperInvariant(target[0]))
 				{
-					return false;
+					return null;
 				}
-				target = root.TrimEnd('\\') + target.Substring(2);
+
+				target = share + target.Substring(2);
 			}
 
-			if (!Path.IsPathRooted(target))
-			{
-				return false;
-			}
-			target = Path.GetFullPath(target).TrimEnd('\\');
-			return !target.Equals(child.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
-				&& (target.Equals(Path.Combine(root, "ProgramData"), StringComparison.OrdinalIgnoreCase)
-					|| target.Equals(Path.Combine(usersDirectory, "Default"), StringComparison.OrdinalIgnoreCase));
+			return Path.IsPathRooted(target) ? Path.GetFullPath(target).TrimEnd('\\') : null;
 		}
 
-		// Делает непроверенные ветки видимыми в результате и сохраняет полную диагностику.
+		// Делает непроверенные ветки видимыми в результате и сохраняет полную диагностику в журнале.
 		private void RecordError(string path, Exception exception, IList<ScanError> errors)
 		{
 			errors.Add(new ScanError(path, exception.Message, ErrorClassifier.Classify(exception)));
