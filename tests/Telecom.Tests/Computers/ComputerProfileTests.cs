@@ -36,6 +36,7 @@ namespace Telecom.Tests
 			AddTest(tests, "Список ПК: дубли не повреждают прежний файл", CheckDuplicateComputerProfiles);
 			AddTest(tests, "Список ПК: повреждённый XML и DTD не принимаются", CheckInvalidComputerProfiles);
 			AddTest(tests, "Список ПК: только полный IPv4 без имён и неоднозначных сокращений", CheckProfileIpv4);
+			AddTest(tests, "Список ПК: адрес этого компьютера распознаётся", CheckThisComputerAddress);
 			AddWindowsOnly(tests, "Редактор ПК: проверка IPv4 и путей с сохранением учётки", CheckComputerProfileDialog);
 			AddWindowsOnly(tests, "Учётки Windows: запись, обновление и удаление собственного секрета", CheckWindowsCredentialStore);
 			AddTest(tests, "SMB: ПК без логина требует настройки перед подключением", CheckSmbWithoutCredentials);
@@ -126,6 +127,15 @@ namespace Telecom.Tests
 					+ "<additionalDirectory other=\"true\">C:\\Certs</additionalDirectory></computer></computers>");
 				Check.Throws<InvalidDataException>(() => store.Load());
 			}
+		}
+
+		// 127.x.x.x — всегда этот ПК, адрес из тестового диапазона 192.0.2.0/24 — никогда.
+		private static void CheckThisComputerAddress()
+		{
+			Check.Equal(true, LocalAddresses.IsThisComputer("127.0.0.1"));
+			Check.Equal(true, LocalAddresses.IsThisComputer("127.5.6.7"));
+			Check.Equal(false, LocalAddresses.IsThisComputer(ProfileComputerIp));
+			Check.Equal(false, LocalAddresses.IsThisComputer("не адрес"));
 		}
 
 		// Отклоняет адреса, которые могли бы незаметно превратиться в другой ПК или потребовать DNS.

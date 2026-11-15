@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Telecom.App.Theming;
+using Telecom.Core.Common;
 using Telecom.Core.Computers;
 
 namespace Telecom.App.Forms.Scan
@@ -114,6 +115,24 @@ namespace Telecom.App.Forms.Scan
 			layout.Controls.Add(input, 1, row);
 		}
 
+		// Если введён адрес этого же компьютера, предупреждает, что он уже есть в списке как «Этот компьютер»:
+		// иначе один ПК будет сканироваться дважды. Не запрещает — через 127.0.0.1 можно проверить сетевой путь на одной машине.
+		// Повторно не спрашивает, если адрес при редактировании не менялся.
+		private bool ConfirmThisComputerAddress(string ipAddress)
+		{
+			bool addressChanged = previous == null || previous.IpAddress != ipAddress;
+			if (!addressChanged || !LocalAddresses.IsThisComputer(ipAddress))
+			{
+				return true;
+			}
+
+			string message = "Адрес " + ipAddress + " принадлежит этому компьютеру. Он уже есть в списке как «Этот компьютер», "
+				+ "поэтому будет просканирован дважды, а его сертификаты задвоятся в таблице «Сертификаты по компьютерам».\r\n\r\n"
+				+ "Сохранить всё равно?";
+			return MessageBox.Show(this, message, "Адрес этого компьютера", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+				MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+		}
+
 		// Проверяет ввод до записи настроек и создаёт новый идентификатор для безопасной замены пароля.
 		private void OnSave(object sender, EventArgs args)
 		{
@@ -134,8 +153,14 @@ namespace Telecom.App.Forms.Scan
 					throw new ArgumentException("Введите учётную запись и пароль.");
 				}
 
-				Profile = new ComputerProfile(Guid.NewGuid(), ipAddressInput.Text, nameInput.Text, userName,
+				var profile = new ComputerProfile(Guid.NewGuid(), ipAddressInput.Text, nameInput.Text, userName,
 					previous == null || previous.Selected, additionalDirectoriesInput.Lines);
+				if (!ConfirmThisComputerAddress(profile.IpAddress))
+				{
+					return;
+				}
+
+				Profile = profile;
 				DialogResult = DialogResult.OK;
 			}
 			catch (ArgumentException exception)
