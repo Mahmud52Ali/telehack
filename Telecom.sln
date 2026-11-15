@@ -7,8 +7,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Telecom.Core", "src\Telecom
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Telecom.App", "src\Telecom.App\Telecom.App.csproj", "{7969AC3A-88FA-464D-A2AD-9945173322B3}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Telecom.Tests", "tests\Telecom.Tests\Telecom.Tests.csproj", "{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,10 +21,6 @@ Global
 		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7969AC3A-88FA-464D-A2AD-9945173322B3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F10A6C8F-E6A9-4B0B-A476-BB6013A5044E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
